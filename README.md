@@ -121,3 +121,5 @@ flutter test integration_test
 - P1：无障碍、平板优化、埋点与崩溃上报
 - P2：Web 独立采帧、设置持久化、CI/CD
 - P3：账号体系、会话历史、商业化部署
+=======
+
