@@ -9,7 +9,8 @@ import '../services/permissions/permission_service.dart';
 import '../services/session/session_service.dart';
 import '../services/settings/runtime_settings_service.dart';
 import '../services/speech/speech_service.dart';
-
+import '../services/theme/theme_service.dart';
+import '../services/wakelock/wakelock_service.dart';
 Future<void> bootstrap() async {
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
@@ -25,6 +26,10 @@ Future<void> bootstrap() async {
   final session = Get.put(SessionService(), permanent: true);
   final permissionService = Get.put(PermissionService(), permanent: true);
   final speechService = Get.put(SpeechService(), permanent: true);
+  Get.put(WakeLockService(), permanent: true);
+
+  // 主题服务（默认主题已在 AppTheme 中预置）
+  Get.put(ThemeService(), permanent: true);
 
   final ws = Get.put(
     RealtimeWsService(

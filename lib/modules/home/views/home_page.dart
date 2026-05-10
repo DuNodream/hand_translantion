@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:camera/camera.dart';
@@ -10,6 +11,7 @@ import '../../../services/connection/realtime_ws_service.dart';
 import '../../../services/session/session_service.dart';
 import '../../../services/settings/runtime_settings_service.dart';
 import '../../../services/speech/speech_service.dart';
+import '../../../services/wakelock/wakelock_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../controllers/home_page_controller.dart';
 
@@ -22,15 +24,16 @@ class HomePage extends GetView<HomePageController> {
   @override
   Widget build(BuildContext context) {
     final settings = Get.find<RuntimeSettingsService>();
-    return Obx(
-      () => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(settings.textScale.value),
-        ),
-        child: CupertinoPageScaffold(
-          backgroundColor: AppTheme.background,
-          child: SafeArea(
-            child: Obx(() {
+    return Obx(() {
+        final c = AppTheme.current;
+        return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(settings.textScale.value),
+            ),
+            child: CupertinoPageScaffold(
+              backgroundColor: c.background,
+              child: SafeArea(
+                child: Obx(() {
               if (controller.showLoading) {
                 return const _LoadingState();
               }
@@ -46,95 +49,265 @@ class HomePage extends GetView<HomePageController> {
                   onAction: controller.retryAll,
                 );
               }
-              return const _WorkbenchLayout();
+              return Column(
+                children: const [
+                  _TopBar(),
+                  Expanded(child: _WorkbenchLayout()),
+                ],
+              );
             }),
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ======================== 工作台布局 ========================
-
-class _WorkbenchLayout extends GetView<HomePageController> {
-  const _WorkbenchLayout();
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      if (controller.isSigner.value) {
-        // 手语者模式：摄像头 + 对话面板
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: const [
-              Expanded(flex: 58, child: _CameraPanel()),
-              SizedBox(width: 18),
-              Expanded(flex: 42, child: _RightPanel()),
-            ],
-          ),
         );
-      } else {
-        // 对话者模式：仅对话面板（全宽）
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: const [
-              Expanded(flex: 58, child: _ChatOnlyPanel()),
-              SizedBox(width: 18),
-              Expanded(flex: 42, child: _RightPanel()),
-            ],
-          ),
-        );
-      }
     });
   }
 }
 
-/// 对话者模式：用聊天背景替代摄像头预览
-class _ChatOnlyPanel extends StatelessWidget {
-  const _ChatOnlyPanel();
+// ======================== Top Bar ========================
+
+class _TopBar extends GetView<HomePageController> {
+  const _TopBar();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppTheme.glassBorder),
-      ),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Container(
-                color: AppTheme.background,
-                alignment: Alignment.center,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+    final c = AppTheme.current;
+    final ws = Get.find<RealtimeWsService>();
+    final settings = Get.find<RuntimeSettingsService>();
+    return Obx(() {
+      final connected = ws.state.value == WsState.connected;
+      final wsColor = connected ? c.success : c.warning;
+      final wsLabel = switch (ws.state.value) {
+        WsState.connected => '在线',
+        WsState.connecting => '连接中',
+        WsState.reconnecting => '重连中',
+        WsState.error => '错误',
+        WsState.disconnected => '离线',
+        WsState.idle => '空闲',
+      };
+
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(0),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+            decoration: BoxDecoration(
+              color: c.surface.withValues(alpha: 0.8),
+              border: Border(bottom: BorderSide(color: c.divider)),
+            ),
+            child: SafeArea(
+              top: true,
+              bottom: false,
+              child: SizedBox(
+                height: 48,
+                child: Row(
                   children: [
-                    Icon(
-                      CupertinoIcons.chat_bubble_2_fill,
-                      size: 48,
-                      color: AppTheme.textMuted.withValues(alpha: 0.3),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '文字对话模式',
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                    // Room info
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: c.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(CupertinoIcons.number, size: 13, color: c.accentLight),
+                          const SizedBox(width: 6),
+                          Text(
+                            settings.roomCode.value ?? '---',
+                            style: TextStyle(
+                              color: c.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '接收手语识别结果并通过文字回复',
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 14,
+                    const SizedBox(width: 10),
+                    // Role badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: controller.isSigner.value
+                            ? c.accent.withValues(alpha: 0.12)
+                            : const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            controller.isSigner.value
+                                ? CupertinoIcons.hand_raised
+                                : CupertinoIcons.chat_bubble_2,
+                            size: 12,
+                            color: c.textSecondary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            controller.isSigner.value ? '手语者' : '对话者',
+                            style: TextStyle(
+                              color: c.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Connection status
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: wsColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: wsColor,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: wsColor.withValues(alpha: 0.6),
+                                  blurRadius: 4,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            wsLabel,
+                            style: TextStyle(
+                              color: wsColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    // Session timer
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: c.glassBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(CupertinoIcons.clock, size: 12, color: c.textMuted),
+                          const SizedBox(width: 6),
+                          Text(
+                            controller.sessionDuration.value,
+                            style: TextStyle(
+                              color: c.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Quick settings toggle
+                    GestureDetector(
+                      onTap: () => controller.showQuickSettings.toggle(),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: controller.showQuickSettings.value
+                              ? c.accent.withValues(alpha: 0.2)
+                              : c.glassBg,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: controller.showQuickSettings.value
+                                ? c.accent.withValues(alpha: 0.3)
+                                : c.glassBorder,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          CupertinoIcons.slider_horizontal_3,
+                          size: 14,
+                          color: controller.showQuickSettings.value
+                              ? c.accentLight
+                              : c.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Settings
+                    GestureDetector(
+                      onTap: () => Get.toNamed('/settings'),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: c.glassBg,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: c.glassBorder),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          CupertinoIcons.gear,
+                          size: 14,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Destroy room (creator only)
+                    if (controller.isCreator)
+                      GestureDetector(
+                        onTap: () => _confirmDestroy(context),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: c.danger.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: c.danger.withValues(alpha: 0.3)),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            CupertinoIcons.trash,
+                            size: 14,
+                            color: c.danger,
+                          ),
+                        ),
+                      ),
+                    if (controller.isCreator) const SizedBox(width: 8),
+                    // Leave
+                    GestureDetector(
+                      onTap: () => _confirmLeave(context),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: c.danger.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: c.danger.withValues(alpha: 0.2)),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          CupertinoIcons.clear,
+                          size: 14,
+                          color: c.danger,
+                        ),
                       ),
                     ),
                   ],
@@ -142,36 +315,234 @@ class _ChatOnlyPanel extends StatelessWidget {
               ),
             ),
           ),
-          const Positioned(top: 16, left: 16, child: _StatusBadge()),
+        ),
+      );
+    });
+  }
+
+  void _confirmLeave(BuildContext context) {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('离开房间'),
+        content: const Text('确定要离开当前房间吗？'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Get.back<void>(),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Get.back<void>();
+              controller.leaveRoom();
+            },
+            child: const Text('离开'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDestroy(BuildContext context) {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('销毁房间'),
+        content: const Text('确定要销毁当前房间吗？\n双方都将断开连接。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Get.back<void>(),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Get.back<void>();
+              controller.destroyRoom();
+            },
+            child: const Text('销毁'),
+          ),
         ],
       ),
     );
   }
 }
 
-// ======================== 摄像头面板 ========================
+// ======================== Quick Settings Overlay ========================
+
+class _QuickSettingsPanel extends GetView<HomePageController> {
+  const _QuickSettingsPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.current;
+    final settings = Get.find<RuntimeSettingsService>();
+    final wakeLock = Get.find<WakeLockService>();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: c.surface.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: c.glassBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '快捷设置',
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Obx(() => _QuickSwitch(
+                icon: CupertinoIcons.videocam,
+                label: '视频识别',
+                value: settings.videoRecognitionEnabled.value,
+                onChanged: (_) => settings.toggleVideoRecognition(),
+              )),
+              const SizedBox(height: 10),
+              Obx(() => _QuickSwitch(
+                icon: CupertinoIcons.sun_max,
+                label: '屏幕常亮',
+                value: wakeLock.enabled.value,
+                onChanged: (_) => wakeLock.toggle(),
+              )),
+              const SizedBox(height: 10),
+              Obx(() => _QuickSwitch(
+                icon: CupertinoIcons.textformat_size,
+                label: '大字体',
+                value: settings.textScale.value > 1.0,
+                onChanged: (v) => settings.textScale.value = v ? 1.3 : 1.0,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickSwitch extends StatelessWidget {
+  const _QuickSwitch({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.current;
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: c.textMuted),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: c.textSecondary, fontSize: 13),
+          ),
+        ),
+        CupertinoSwitch(
+          value: value,
+          activeTrackColor: c.accent,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+// ======================== Workbench Layout ========================
+
+class _WorkbenchLayout extends GetView<HomePageController> {
+  const _WorkbenchLayout();
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      return Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: controller.isSigner.value
+                ? _signerLayout()
+                : _chatLayout(),
+          ),
+          // Quick settings overlay
+          if (controller.showQuickSettings.value)
+            Positioned(
+              top: 0,
+              right: 20,
+              width: 260,
+              child: _QuickSettingsPanel(),
+            ),
+        ],
+      );
+    });
+  }
+
+  Widget _signerLayout() {
+    return const Row(
+      children: [
+        Expanded(flex: 58, child: _CameraPanel()),
+        SizedBox(width: 16),
+        Expanded(flex: 42, child: _RightPanel()),
+      ],
+    );
+  }
+
+  Widget _chatLayout() {
+    final settings = Get.find<RuntimeSettingsService>();
+    if (settings.videoRecognitionEnabled.value) {
+      return Row(
+        children: [
+          Expanded(flex: 58, child: _CameraPanel()),
+          const SizedBox(width: 16),
+          Expanded(flex: 42, child: _RightPanel()),
+        ],
+      );
+    }
+    return const Row(
+      children: [
+        Expanded(child: _RightPanel()),
+      ],
+    );
+  }
+}
+
+// ======================== Camera Panel ========================
 
 class _CameraPanel extends GetView<HomePageController> {
   const _CameraPanel();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     final settings = Get.find<RuntimeSettingsService>();
     return Obx(() {
       if (!settings.videoRecognitionEnabled.value) {
-        return Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppTheme.glassBorder),
-          ),
+        return _buildContainer(
           child: Stack(
             children: [
               Positioned.fill(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(24),
                   child: Container(
-                    color: AppTheme.background,
+                    color: c.background,
                     alignment: Alignment.center,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -179,22 +550,22 @@ class _CameraPanel extends GetView<HomePageController> {
                         Icon(
                           CupertinoIcons.eye_slash,
                           size: 48,
-                          color: AppTheme.textMuted.withValues(alpha: 0.3),
+                          color: c.textMuted.withValues(alpha: 0.3),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
+                        Text(
                           '视频识别已关闭',
                           style: TextStyle(
-                            color: AppTheme.textMuted,
+                            color: c.textMuted,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          '可在设置中重新开启',
+                        Text(
+                          '可在快捷设置中重新开启',
                           style: TextStyle(
-                            color: AppTheme.textMuted,
+                            color: c.textMuted,
                             fontSize: 13,
                           ),
                         ),
@@ -209,14 +580,10 @@ class _CameraPanel extends GetView<HomePageController> {
         );
       }
 
-      return Container(
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppTheme.glassBorder),
-        ),
+      return _buildContainer(
         child: Stack(
           children: [
+            // Camera preview
             Positioned.fill(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(24),
@@ -234,7 +601,54 @@ class _CameraPanel extends GetView<HomePageController> {
                 }),
               ),
             ),
+            // Status badge
             const Positioned(top: 16, left: 16, child: _StatusBadge()),
+            // Recognition indicator
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Obx(() {
+                final recognizing = controller.sessionService.isRecognizing.value;
+                if (!recognizing) return const SizedBox.shrink();
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: c.accent.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: c.accent.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: c.accent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '识别中',
+                            style: TextStyle(
+                              color: c.accentLight,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            // Bottom guidance
             Positioned(
               bottom: 18,
               left: 18,
@@ -247,28 +661,61 @@ class _CameraPanel extends GetView<HomePageController> {
     });
   }
 
+  Widget _buildContainer({required Widget child}) {
+    final c = AppTheme.current;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: c.glassBorder),
+      ),
+      child: child,
+    );
+  }
+
   Widget _buildGuidance() {
+    final c = AppTheme.current;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0x73000000),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.glassBorder),
+            color: const Color(0x80000000),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: c.glassBorder.withValues(alpha: 0.3)),
           ),
-          child: const Row(
+          child: Row(
             children: [
-              Icon(CupertinoIcons.hand_raised, size: 14, color: AppTheme.textMuted),
-              SizedBox(width: 8),
-              Text(
-                '请将双手放在预览框中央，保持上半身在画面内',
-                style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: c.accent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(7),
                 ),
+                alignment: Alignment.center,
+                child: Icon(CupertinoIcons.hand_raised, size: 12, color: c.accentLight),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Obx(() {
+                  final caption = controller.sessionService.liveCaption.value;
+                  return Text(
+                    caption == '等待识别开始'
+                        ? '请将双手放在预览框中央，保持上半身在画面内'
+                        : caption,
+                    style: TextStyle(
+                      color: controller.sessionService.isRecognizing.value
+                          ? c.accentLight
+                          : c.textSecondary,
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  );
+                }),
               ),
             ],
           ),
@@ -278,17 +725,18 @@ class _CameraPanel extends GetView<HomePageController> {
   }
 }
 
-// ======================== 玻璃状态胶囊 ========================
+// ======================== Status Badge ========================
 
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     final ws = Get.find<RealtimeWsService>();
     return Obx(() {
       final connected = ws.state.value == WsState.connected;
-      final color = connected ? AppTheme.success : AppTheme.warning;
+      final color = connected ? c.success : c.warning;
       final text = switch (ws.state.value) {
         WsState.connected => '在线',
         WsState.connecting => '连接中',
@@ -303,11 +751,11 @@ class _StatusBadge extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
               color: const Color(0x73000000),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppTheme.glassBorder),
+              border: Border.all(color: c.glassBorder),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -330,9 +778,9 @@ class _StatusBadge extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   text,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 11,
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -345,24 +793,26 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-// ======================== 右侧玻璃面板 ========================
+// ======================== Right Panel ========================
 
 class _RightPanel extends GetView<HomePageController> {
   const _RightPanel();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           decoration: BoxDecoration(
-            color: AppTheme.surface.withValues(alpha: 0.7),
+            color: c.surface.withValues(alpha: 0.7),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppTheme.glassBorder),
+            border: Border.all(color: c.glassBorder),
           ),
           child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _ChatHeader(),
               _Divider(),
@@ -379,13 +829,14 @@ class _RightPanel extends GetView<HomePageController> {
   }
 }
 
-// ======================== 聊天气泡头部 ========================
+// ======================== Chat Header ========================
 
 class _ChatHeader extends GetView<HomePageController> {
   const _ChatHeader();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     final session = controller.sessionService;
     final settings = Get.find<RuntimeSettingsService>();
     return Padding(
@@ -396,14 +847,14 @@ class _ChatHeader extends GetView<HomePageController> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: AppTheme.accent.withValues(alpha: 0.15),
+              color: c.accent.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               CupertinoIcons.chat_bubble_2_fill,
               size: 16,
-              color: AppTheme.accentLight,
+              color: c.accentLight,
             ),
           ),
           const SizedBox(width: 10),
@@ -411,42 +862,82 @@ class _ChatHeader extends GetView<HomePageController> {
             final code = settings.roomCode.value;
             return Text(
               code != null ? '房间 $code' : '对话',
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
+              style: TextStyle(
+                color: c.textPrimary,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
             );
           }),
-          const Spacer(),
+          // Message count
           Obx(() {
             if (session.messages.isEmpty) return const SizedBox.shrink();
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.accent.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '${session.messages.length}',
-                style: const TextStyle(
-                  color: AppTheme.accentLight,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+            return Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: c.accent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Obx(() => Text(
+                  '${session.messages.length}',
+                  style: TextStyle(
+                    color: c.accentLight,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                )),
               ),
             );
           }),
+          const Spacer(),
+          // Quick phrases toggle
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            pressedOpacity: 0.6,
+            onPressed: () => _showAllPhrases(context),
+            child: Icon(
+              CupertinoIcons.rectangle_3_offgrid,
+              size: 16,
+              color: c.textMuted,
+            ),
+          ),
           const SizedBox(width: 8),
+          // Clear
           CupertinoButton(
             padding: EdgeInsets.zero,
             pressedOpacity: 0.6,
             onPressed: controller.clearConversation,
-            child: const Icon(
+            child: Icon(
               CupertinoIcons.trash,
               size: 16,
-              color: AppTheme.textMuted,
+              color: c.textMuted,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAllPhrases(BuildContext context) {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('快捷短语'),
+        actions: [
+          for (final phrase in controller.quickPhrases)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Get.back<void>();
+                controller.sendQuickPhrase(phrase);
+              },
+              child: Text(phrase),
+            ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Get.back<void>(),
+            child: const Text('取消'),
           ),
         ],
       ),
@@ -454,37 +945,39 @@ class _ChatHeader extends GetView<HomePageController> {
   }
 }
 
-// ======================== 分割线 ========================
+// ======================== Divider ========================
 
 class _Divider extends StatelessWidget {
   const _Divider();
 
   @override
   Widget build(BuildContext context) {
-    return Container(height: 0.5, color: AppTheme.divider);
+    final c = AppTheme.current;
+    return Container(height: 0.5, color: c.divider);
   }
 }
 
-// ======================== 实时字幕条 ========================
+// ======================== Live Caption Bar ========================
 
 class _LiveCaptionBar extends GetView<HomePageController> {
   const _LiveCaptionBar();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     final session = controller.sessionService;
     return Obx(
       () => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
             if (session.isRecognizing.value)
               Container(
-                margin: const EdgeInsets.only(right: 8),
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: AppTheme.accent,
+                margin: const EdgeInsets.only(right: 10),
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: c.accent,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -493,11 +986,13 @@ class _LiveCaptionBar extends GetView<HomePageController> {
                 session.liveCaption.value,
                 style: TextStyle(
                   color: session.isRecognizing.value
-                      ? AppTheme.accentLight
-                      : AppTheme.textSecondary,
-                  fontSize: 13,
+                      ? c.accentLight
+                      : c.textSecondary,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -507,32 +1002,44 @@ class _LiveCaptionBar extends GetView<HomePageController> {
   }
 }
 
-// ======================== 对话消息列表 ========================
+// ======================== Conversation Body ========================
 
 class _ConversationBody extends GetView<HomePageController> {
   const _ConversationBody();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     final session = controller.sessionService;
     return Obx(() {
       if (session.messages.isEmpty) {
-        return const Center(
+        return Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              '识别结果和文字消息将显示在这里',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppTheme.textMuted,
-                fontSize: 13,
-              ),
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  CupertinoIcons.chat_bubble_2_fill,
+                  size: 36,
+                  color: c.textMuted,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '识别结果和文字消息将显示在这里',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: c.textMuted,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ),
           ),
         );
       }
       return ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         reverse: true,
         itemCount: session.messages.length,
         itemBuilder: (context, index) {
@@ -547,7 +1054,7 @@ class _ConversationBody extends GetView<HomePageController> {
   }
 }
 
-// ======================== 系统消息 ========================
+// ======================== System Message ========================
 
 class _SystemMessage extends StatelessWidget {
   const _SystemMessage({required this.content});
@@ -555,19 +1062,21 @@ class _SystemMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 16),
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: AppTheme.glassBg,
+            color: c.glassBg,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: c.glassBorder),
           ),
           child: Text(
             content,
-            style: const TextStyle(
-              color: AppTheme.textMuted,
+            style: TextStyle(
+              color: c.textMuted,
               fontSize: 11,
             ),
           ),
@@ -577,7 +1086,7 @@ class _SystemMessage extends StatelessWidget {
   }
 }
 
-// ======================== 聊天气泡（非对称圆角） ========================
+// ======================== Chat Bubble ========================
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({required this.message});
@@ -585,17 +1094,36 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMe = message.origin == MessageOrigin.user;
-    final bubbleColor = isMe ? AppTheme.chatBubbleMe : AppTheme.chatBubbleOther;
+    final c = AppTheme.current;
+    final isSigner = Get.find<HomePageController>().isSigner.value;
+    final isMe = message.origin == MessageOrigin.user ||
+        (isSigner && message.origin == MessageOrigin.sign) ||
+        (!isSigner && message.origin == MessageOrigin.speech);
+
+    Color bubbleColor;
+    IconData? prefixIcon;
+
+    if (isMe) {
+      bubbleColor = c.chatBubbleMe;
+    } else if (message.origin == MessageOrigin.sign) {
+      bubbleColor = const Color(0xFF1E3A5F);
+      prefixIcon = CupertinoIcons.hand_raised;
+    } else if (message.origin == MessageOrigin.speech) {
+      bubbleColor = const Color(0xFF2D1B69);
+      prefixIcon = CupertinoIcons.mic;
+    } else {
+      bubbleColor = c.chatBubbleOther;
+    }
+
     final borderRadius = BorderRadius.only(
-      topLeft: const Radius.circular(18),
-      topRight: const Radius.circular(18),
-      bottomLeft: Radius.circular(isMe ? 18 : 4),
-      bottomRight: Radius.circular(isMe ? 4 : 18),
+      topLeft: const Radius.circular(19),
+      topRight: const Radius.circular(19),
+      bottomLeft: Radius.circular(isMe ? 19 : 5),
+      bottomRight: Radius.circular(isMe ? 5 : 19),
     );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 16),
       child: Column(
         crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
@@ -603,28 +1131,45 @@ class _ChatBubble extends StatelessWidget {
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.35,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: bubbleColor,
               borderRadius: borderRadius,
-              border: isMe ? null : Border.all(color: AppTheme.glassBorder, width: 0.5),
+              boxShadow: [
+                BoxShadow(
+                  color: bubbleColor.withValues(alpha: isMe ? 0.25 : 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            child: Text(
-              message.content,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 15,
-                height: 1.3,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (prefixIcon != null) ...[
+                  Icon(prefixIcon, size: 12, color: c.textSecondary),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(
+                    message.content,
+                    style: TextStyle(
+                      color: c.textPrimary,
+                      fontSize: 15,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           if (message.status == MessageStatus.sending)
-            const Padding(
-              padding: EdgeInsets.only(top: 2, right: 4),
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 4),
               child: Text(
                 '发送中',
                 style: TextStyle(
-                  color: AppTheme.textMuted,
+                  color: c.textMuted,
                   fontSize: 10,
                 ),
               ),
@@ -635,10 +1180,10 @@ class _ChatBubble extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
+                  Text(
                     '失败',
                     style: TextStyle(
-                      color: AppTheme.danger,
+                      color: c.danger,
                       fontSize: 10,
                     ),
                   ),
@@ -646,10 +1191,10 @@ class _ChatBubble extends StatelessWidget {
                     padding: const EdgeInsets.only(left: 4),
                     minimumSize: Size.zero,
                     onPressed: () => Get.find<SessionService>().retryMessage(message.id),
-                    child: const Text(
+                    child: Text(
                       '重试',
                       style: TextStyle(
-                        color: AppTheme.accentLight,
+                        color: c.accentLight,
                         fontSize: 10,
                       ),
                     ),
@@ -663,71 +1208,77 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-// ======================== 底部操作栏 ========================
+// ======================== Composer Bar ========================
 
 class _ComposerBar extends GetView<HomePageController> {
   const _ComposerBar();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     final speech = Get.find<SpeechService>();
     final session = Get.find<SessionService>();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       child: Row(
         children: [
-          // 快捷短语
+          // Quick phrases (only show when no messages)
           Obx(() {
             if (session.messages.isNotEmpty) return const SizedBox.shrink();
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ...controller.quickPhrases.take(2).map(
+                ...controller.quickPhrases.take(3).map(
                   (phrase) => Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: _QuickChip(label: phrase, onTap: () => controller.sendQuickPhrase(phrase)),
+                    child: _QuickChip(
+                      label: phrase,
+                      onTap: () => controller.sendQuickPhrase(phrase),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
               ],
             );
           }),
-          // 麦克风
+          // Mic button
           Obx(() {
             final settings = Get.find<RuntimeSettingsService>();
             if (settings.speechEngine.value == 'none') return const SizedBox.shrink();
             final listening = speech.state.value == SpeechState.listening;
             final unavailable = speech.state.value == SpeechState.unavailable;
-            return _IconButton(
-              icon: CupertinoIcons.mic,
-              size: 36,
-              active: listening,
-              danger: listening,
-              onTap: unavailable
-                  ? () => _showSpeechUnavailable(context)
-                  : controller.toggleSpeech,
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _IconButton(
+                icon: CupertinoIcons.mic,
+                size: 36,
+                active: listening,
+                danger: listening,
+                onTap: unavailable
+                    ? () => _showSpeechUnavailable(context)
+                    : controller.toggleSpeech,
+              ),
             );
           }),
-          const SizedBox(width: 8),
-          // 文本框
+          // Text input
           Expanded(
             child: Container(
               height: 36,
               decoration: BoxDecoration(
-                color: AppTheme.glassBg,
+                color: c.glassBg,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppTheme.glassBorder),
+                border: Border.all(color: c.glassBorder),
               ),
               child: CupertinoTextField(
                 controller: controller.textController,
-                placeholder: '输入消息',
+                placeholder: '输入消息...',
                 padding: const EdgeInsets.symmetric(horizontal: 14),
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
+                style: TextStyle(
+                  color: c.textPrimary,
                   fontSize: 14,
                 ),
-                placeholderStyle: const TextStyle(
-                  color: AppTheme.textMuted,
+                placeholderStyle: TextStyle(
+                  color: c.textMuted,
                   fontSize: 14,
                 ),
                 decoration: const BoxDecoration(),
@@ -737,21 +1288,15 @@ class _ComposerBar extends GetView<HomePageController> {
             ),
           ),
           const SizedBox(width: 8),
-          // 发送按钮（渐变）
+          // Send
           _SendButton(onTap: controller.sendCurrentInput),
-          const SizedBox(width: 8),
-          // 设置
-          _IconButton(
-            icon: CupertinoIcons.gear,
-            size: 36,
-            onTap: () => Get.toNamed('/settings'),
-          ),
         ],
       ),
     );
   }
 
   void _showSpeechUnavailable(BuildContext context) {
+    final c = AppTheme.current;
     final msg = controller.speechService.errorMessage.value ??
         '语音识别在当前设备不可用。';
     Get.snackbar(
@@ -759,45 +1304,13 @@ class _ComposerBar extends GetView<HomePageController> {
       '$msg\n请点击右上角齿轮图标进入设置更改语音引擎',
       snackPosition: SnackPosition.BOTTOM,
       backgroundColor: const Color(0xCC1A1A2E),
-      colorText: AppTheme.textPrimary,
+      colorText: c.textPrimary,
       duration: const Duration(seconds: 4),
     );
   }
 }
 
-// ======================== 快捷短语芯片 ========================
-
-class _QuickChip extends StatelessWidget {
-  const _QuickChip({required this.label, required this.onTap});
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: AppTheme.glassBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppTheme.glassBorder),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 11,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ======================== 图标按钮 ========================
+// ======================== Icon Button ========================
 
 class _IconButton extends StatelessWidget {
   const _IconButton({
@@ -816,17 +1329,20 @@ class _IconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = danger
-        ? CupertinoColors.destructiveRed.withValues(alpha: 0.15)
-        : active
-            ? AppTheme.glassBg
-            : AppTheme.glassBg;
-    final borderColor = danger
-        ? CupertinoColors.destructiveRed.withValues(alpha: 0.3)
-        : AppTheme.glassBorder;
+    final c = AppTheme.current;
+    final activeBg = danger
+        ? CupertinoColors.destructiveRed.withValues(alpha: 0.2)
+        : c.accent.withValues(alpha: 0.2);
+    final idleBg = c.glassBg;
+    final bgColor = active ? activeBg : idleBg;
+    final borderColor = active
+        ? (danger
+            ? CupertinoColors.destructiveRed.withValues(alpha: 0.3)
+            : c.accent.withValues(alpha: 0.3))
+        : c.glassBorder;
     final iconColor = active
-        ? (danger ? CupertinoColors.destructiveRed : AppTheme.accentLight)
-        : AppTheme.textSecondary;
+        ? (danger ? CupertinoColors.destructiveRed : c.accentLight)
+        : c.textSecondary;
 
     return GestureDetector(
       onTap: onTap,
@@ -835,17 +1351,17 @@ class _IconButton extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
           border: Border.all(color: borderColor),
         ),
         alignment: Alignment.center,
-        child: Icon(icon, size: 16, color: iconColor),
+        child: Icon(icon, size: 17, color: iconColor),
       ),
     );
   }
 }
 
-// ======================== 渐变色发送按钮 ========================
+// ======================== Send Button ========================
 
 class _SendButton extends StatelessWidget {
   const _SendButton({required this.onTap});
@@ -853,48 +1369,90 @@ class _SendButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 36,
-        height: 36,
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppTheme.accent, AppTheme.accentLight],
+          gradient: LinearGradient(
+            colors: [c.accent, c.accentLight],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: c.accent.withValues(alpha: 0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         alignment: Alignment.center,
-        child: const Icon(
+        child: Icon(
           CupertinoIcons.arrow_up,
-          size: 18,
-          color: AppTheme.textPrimary,
+          size: 17,
+          color: c.textPrimary,
         ),
       ),
     );
   }
 }
 
-// ======================== 摄像头加载占位 ========================
+// ======================== Quick Phrase Chip ========================
+
+class _QuickChip extends StatelessWidget {
+  const _QuickChip({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.current;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: c.glassBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: c.glassBorder),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: c.textSecondary,
+            fontSize: 11,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ======================== Camera Placeholder ========================
 
 class _CameraPlaceholder extends StatelessWidget {
   const _CameraPlaceholder();
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return Container(
-      color: AppTheme.surface,
+      color: c.surface,
       alignment: Alignment.center,
-      child: const Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CupertinoActivityIndicator(radius: 16),
-          SizedBox(height: 12),
+          const CupertinoActivityIndicator(radius: 16),
+          const SizedBox(height: 12),
           Text(
             '摄像头准备中',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+            style: TextStyle(color: c.textSecondary, fontSize: 16),
           ),
         ],
       ),
@@ -902,22 +1460,23 @@ class _CameraPlaceholder extends StatelessWidget {
   }
 }
 
-// ======================== 加载 / 错误 / 权限 ========================
+// ======================== Loading / Error / Permission States ========================
 
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final c = AppTheme.current;
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CupertinoActivityIndicator(radius: 18),
-          SizedBox(height: 16),
+          const CupertinoActivityIndicator(radius: 18),
+          const SizedBox(height: 16),
           Text(
             '正在初始化...',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 18),
+            style: TextStyle(color: c.textSecondary, fontSize: 18),
           ),
         ],
       ),
@@ -955,28 +1514,29 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return Center(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 560),
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          color: AppTheme.surface,
+          color: c.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppTheme.glassBorder),
+          border: Border.all(color: c.glassBorder),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               CupertinoIcons.exclamationmark_triangle_fill,
-              color: AppTheme.warning,
+              color: c.warning,
               size: 48,
             ),
             const SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
+              style: TextStyle(
+                color: c.textPrimary,
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
               ),
@@ -985,8 +1545,8 @@ class _ErrorState extends StatelessWidget {
             Text(
               description,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
+              style: TextStyle(
+                color: c.textSecondary,
                 fontSize: 16,
                 height: 1.5,
               ),

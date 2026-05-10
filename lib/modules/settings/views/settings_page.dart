@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
 
+import '../../../services/theme/theme_service.dart';
+import '../../../services/wakelock/wakelock_service.dart';
 import '../../../shared/themes/app_theme.dart';
 import '../controllers/settings_controller.dart';
 
@@ -9,16 +11,18 @@ class SettingsPage extends GetView<SettingsController> {
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoPageScaffold(
-      backgroundColor: AppTheme.background,
-      navigationBar: const CupertinoNavigationBar(
-        backgroundColor: AppTheme.surface,
-        border: Border(bottom: BorderSide(color: AppTheme.divider)),
-        middle: Text('设置', style: TextStyle(color: AppTheme.textPrimary)),
-      ),
-      child: SafeArea(
-        child: Obx(() {
-          final settings = controller.settings;
+    return Obx(() {
+        final c = AppTheme.current;
+        return CupertinoPageScaffold(
+          backgroundColor: c.background,
+          navigationBar: CupertinoNavigationBar(
+            backgroundColor: c.surface,
+            border: Border(bottom: BorderSide(color: c.divider)),
+            middle: Text('设置', style: TextStyle(color: c.textPrimary)),
+          ),
+          child: SafeArea(
+            child: Obx(() {
+              final settings = controller.settings;
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 20),
             children: [
@@ -55,6 +59,23 @@ class SettingsPage extends GetView<SettingsController> {
                 onChanged: (_) => controller.toggleVideoRecognition(),
               ),
               const SizedBox(height: 24),
+              _SectionHeader(title: '显示'),
+              _SwitchTile(
+                icon: CupertinoIcons.sun_max,
+                label: '屏幕常亮',
+                subtitle: '保持屏幕不息屏',
+                value: Get.find<WakeLockService>().enabled.value,
+                onChanged: (_) => Get.find<WakeLockService>().toggle(),
+              ),
+              const SizedBox(height: 24),
+              _SectionHeader(title: '主题'),
+              _SettingsTile(
+                icon: CupertinoIcons.paintbrush,
+                label: '主题配色',
+                subtitle: Get.find<ThemeService>().currentName,
+                onTap: () => _showThemePicker(context),
+              ),
+              const SizedBox(height: 24),
               _SectionHeader(title: '语音'),
               _SettingsTile(
                 icon: CupertinoIcons.mic,
@@ -75,6 +96,7 @@ class SettingsPage extends GetView<SettingsController> {
         }),
       ),
     );
+    });
   }
 
   void _showServerUrlDialog(BuildContext context) {
@@ -135,6 +157,32 @@ class SettingsPage extends GetView<SettingsController> {
       ),
     );
   }
+
+  void _showThemePicker(BuildContext context) {
+    final themeService = Get.find<ThemeService>();
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('选择主题配色'),
+        actions: [
+          for (int i = 0; i < themeService.presetCount; i++)
+            CupertinoActionSheetAction(
+              isDefaultAction: i == themeService.currentIndex,
+              onPressed: () {
+                themeService.apply(i);
+                Get.back<void>();
+              },
+              child: Text(themeService.presetNames[i]),
+            ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Get.back<void>(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ======================== Section Header ========================
@@ -149,8 +197,8 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Text(
         title,
-        style: const TextStyle(
-          color: AppTheme.accentLight,
+        style: TextStyle(
+          color: AppTheme.current.accentLight,
           fontSize: 13,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,
@@ -175,18 +223,19 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppTheme.textMuted),
+          Icon(icon, size: 18, color: c.textMuted),
           const SizedBox(width: 12),
           SizedBox(
             width: 80,
             child: Text(
               label,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
+              style: TextStyle(
+                color: c.textSecondary,
                 fontSize: 14,
               ),
             ),
@@ -195,8 +244,8 @@ class _InfoTile extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.end,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
+              style: TextStyle(
+                color: c.textPrimary,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -225,24 +274,25 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: AppTheme.textMuted),
+            Icon(icon, size: 18, color: c.textMuted),
             const SizedBox(width: 12),
-            SizedBox(width: 80, child: Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14))),
+            SizedBox(width: 80, child: Text(label, style: TextStyle(color: c.textSecondary, fontSize: 14))),
             Expanded(
               child: Text(
                 subtitle ?? '',
                 textAlign: TextAlign.end,
-                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w500),
+                style: TextStyle(color: c.textPrimary, fontSize: 14, fontWeight: FontWeight.w500),
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(CupertinoIcons.chevron_right, size: 14, color: AppTheme.textMuted),
+            Icon(CupertinoIcons.chevron_right, size: 14, color: c.textMuted),
           ],
         ),
       ),
@@ -269,25 +319,26 @@ class _SwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppTheme.current;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppTheme.textMuted),
+          Icon(icon, size: 18, color: c.textMuted),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
+                Text(label, style: TextStyle(color: c.textSecondary, fontSize: 14)),
                 if (subtitle != null)
-                  Text(subtitle!, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                  Text(subtitle!, style: TextStyle(color: c.textMuted, fontSize: 11)),
               ],
             ),
           ),
           CupertinoSwitch(
             value: value,
-            activeTrackColor: AppTheme.accent,
+            activeTrackColor: c.accent,
             onChanged: onChanged,
           ),
         ],

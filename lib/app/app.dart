@@ -1,7 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
 
-import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/controllers/home_page_controller.dart';
 import '../modules/home/views/home_page.dart';
 import '../modules/lobby/lobby_controller.dart';
@@ -15,41 +14,57 @@ class SignBridgeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GetCupertinoApp(
-      title: 'SignBridge',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.cupertinoTheme,
-      initialRoute: '/lobby',
-      getPages: [
-        GetPage(
-          name: '/lobby',
-          page: () {
-            Get.put(LobbyController(), permanent: true);
-            return const LobbyPage();
-          },
+    return Obx(() {
+      final c = AppTheme.current;
+      return GetCupertinoApp(
+        title: 'SignBridge',
+        debugShowCheckedModeBanner: false,
+        theme: CupertinoThemeData(
+          brightness: Brightness.dark,
+          primaryColor: c.accent,
+          scaffoldBackgroundColor: c.background,
+          barBackgroundColor: c.surface,
+          textTheme: CupertinoTextThemeData(
+            primaryColor: c.textPrimary,
+            textStyle: TextStyle(color: c.textPrimary, fontSize: 16),
+          ),
         ),
-        GetPage(
-          name: '/home',
-          page: () {
-            final args = Get.arguments as Map<String, dynamic>?;
-            final role = args?['role'] as String? ?? 'signer';
-            final roomId = args?['room_id'] as String? ?? '';
-            Get.put(
-              HomePageController(autoBootstrap: false, role: role, roomId: roomId),
-              permanent: true,
-            );
-            return HomePage(role: role, roomId: roomId);
-          },
-          binding: HomeBinding(),
-        ),
-        GetPage(
-          name: '/settings',
-          page: () {
-            Get.put(SettingsController());
-            return const SettingsPage();
-          },
-        ),
-      ],
-    );
+        initialRoute: '/lobby',
+        getPages: [
+          GetPage(
+            name: '/lobby',
+            page: () {
+              Get.put(LobbyController());
+              return const LobbyPage();
+            },
+          ),
+          GetPage(
+            name: '/home',
+            page: () {
+              final args = Get.arguments as Map<String, dynamic>?;
+              final role = args?['role'] as String? ?? 'signer';
+              final roomId = args?['room_id'] as String? ?? '';
+              final isCreator = args?['is_creator'] as bool? ?? false;
+              Get.put(
+                HomePageController(
+                  autoBootstrap: false,
+                  role: role,
+                  roomId: roomId,
+                  isCreator: isCreator,
+                ),
+              );
+              return HomePage(role: role, roomId: roomId);
+            },
+          ),
+          GetPage(
+            name: '/settings',
+            page: () {
+              Get.put(SettingsController());
+              return const SettingsPage();
+            },
+          ),
+        ],
+      );
+    });
   }
 }

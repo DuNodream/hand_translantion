@@ -37,6 +37,7 @@ class LobbyController extends GetxController {
         Get.offNamed('/home', arguments: {
           'room_id': roomId,
           'role': role,
+          'is_creator': true,
         });
       } else {
         errorMessage.value = '创建房间失败，请检查网络连接';
@@ -64,6 +65,7 @@ class LobbyController extends GetxController {
         Get.offNamed('/home', arguments: {
           'room_id': code,
           'role': role,
+          'is_creator': false,
         });
       } else {
         errorMessage.value = '加入房间失败，请检查房间号是否正确';

@@ -11,13 +11,20 @@ import '../../../services/permissions/permission_service.dart';
 import '../../../services/session/session_service.dart';
 import '../../../services/settings/runtime_settings_service.dart';
 import '../../../services/speech/speech_service.dart';
+import '../../../services/wakelock/wakelock_service.dart';
 
 class HomePageController extends GetxController {
-  HomePageController({this.autoBootstrap = true, this.role = 'signer', this.roomId = ''});
+  HomePageController({
+    this.autoBootstrap = true,
+    this.role = 'signer',
+    this.roomId = '',
+    this.isCreator = false,
+  });
 
   final bool autoBootstrap;
   final String role;
   final String roomId;
+  final bool isCreator;
 
   final textController = TextEditingController();
   final quickPhrases = const <String>[
@@ -25,6 +32,12 @@ class HomePageController extends GetxController {
     '我需要帮助',
     '请再说一遍',
     '谢谢你的帮助',
+    '好的',
+    '明白了',
+    '可以再说一次吗？',
+    '请慢一点',
+    '没问题',
+    '太棒了',
   ];
 
   late final RealtimeWsService wsService;
@@ -34,9 +47,15 @@ class HomePageController extends GetxController {
   late final RuntimeSettingsService settingsService;
   late final PermissionService permissionService;
   late final DebugLogService debugLogService;
+  late final WakeLockService wakeLockService;
 
   final RxBool isBootstrapping = true.obs;
   final RxBool isSigner = false.obs;
+  final RxBool showQuickSettings = false.obs;
+  final RxString sessionDuration = '00:00'.obs;
+
+  Timer? _sessionTimer;
+  DateTime? _sessionStartTime;
 
   @override
   void onInit() {
@@ -48,8 +67,12 @@ class HomePageController extends GetxController {
     settingsService = Get.find<RuntimeSettingsService>();
     permissionService = Get.find<PermissionService>();
     debugLogService = Get.find<DebugLogService>();
+    wakeLockService = Get.find<WakeLockService>();
 
     isSigner.value = role == 'signer';
+
+    wakeLockService.enable();
+    _startSessionTimer();
 
     if (autoBootstrap) {
       unawaited(bootstrapPage());
@@ -75,9 +98,19 @@ class HomePageController extends GetxController {
         cameraService.stopCapture();
       }
     });
+
+    // 监听房间被创建者销毁
+    ever(wsService.roomDestroyedReason, (reason) {
+      if (reason != null && !_isDestroying) {
+        _sessionTimer?.cancel();
+        wakeLockService.disable();
+        Get.offAllNamed('/lobby');
+      }
+    });
   }
 
   Future<void> _initCamera() async {
+    if (!settingsService.videoRecognitionEnabled.value) return;
     debugLogService.log('home', 'init camera');
     await cameraService.initialize();
     if (cameraService.state.value == CameraState.ready) {
@@ -90,9 +123,11 @@ class HomePageController extends GetxController {
     isBootstrapping.value = true;
     debugLogService.log('home', 'bootstrap start');
     await wsService.connect();
-    await cameraService.initialize();
-    if (cameraService.state.value == CameraState.ready) {
-      await cameraService.startCapture();
+    if (settingsService.videoRecognitionEnabled.value) {
+      await cameraService.initialize();
+      if (cameraService.state.value == CameraState.ready) {
+        await cameraService.startCapture();
+      }
     }
     isBootstrapping.value = false;
     debugLogService.log('home', 'bootstrap done');
@@ -128,6 +163,36 @@ class HomePageController extends GetxController {
     wsService.requestSessionReset();
   }
 
+  void _startSessionTimer() {
+    _sessionStartTime = DateTime.now();
+    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_sessionStartTime == null) return;
+      final elapsed = DateTime.now().difference(_sessionStartTime!);
+      final minutes = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
+      final seconds = elapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
+      final hours = elapsed.inHours;
+      if (hours > 0) {
+        sessionDuration.value = '${hours.toString().padLeft(2, '0')}:$minutes:$seconds';
+      } else {
+        sessionDuration.value = '$minutes:$seconds';
+      }
+    });
+  }
+
+  bool _isDestroying = false;
+
+  Future<void> leaveRoom() async {
+    _sessionTimer?.cancel();
+    await wsService.disconnect();
+    Get.offAllNamed('/lobby');
+  }
+
+  Future<void> destroyRoom() async {
+    _isDestroying = true;
+    wsService.destroyRoom(roomId);
+    await leaveRoom();
+  }
+
   bool get showPermissionGuide =>
       cameraService.state.value == CameraState.permissionDenied ||
       permissionService.cameraState.value == PermissionState.denied ||
@@ -146,7 +211,9 @@ class HomePageController extends GetxController {
 
   @override
   void onClose() {
+    _sessionTimer?.cancel();
     textController.dispose();
+    wakeLockService.disable();
     if (!kIsWeb) {
       cameraService.stopCapture();
     }

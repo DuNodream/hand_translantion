@@ -28,6 +28,7 @@ class RealtimeWsService extends GetxService with WidgetsBindingObserver {
   final Rx<WsState> state = WsState.idle.obs;
   final RxString statusText = 'Not connected'.obs;
   final RxnString errorText = RxnString();
+  final RxnString roomDestroyedReason = RxnString();
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
@@ -77,6 +78,7 @@ class RealtimeWsService extends GetxService with WidgetsBindingObserver {
     }
 
     _manuallyClosed = false;
+    roomDestroyedReason.value = null;
     _setState(
       _retryAttempt == 0 ? WsState.connecting : WsState.reconnecting,
       _retryAttempt == 0 ? 'Connecting...' : 'Reconnecting...',
@@ -185,6 +187,12 @@ class RealtimeWsService extends GetxService with WidgetsBindingObserver {
     return result;
   }
 
+  /// 销毁房间（仅创建者可调用），对方将收到 room_destroyed 事件
+  void destroyRoom(String roomId) {
+    _sendJson({'type': 'destroy_room', 'room_id': roomId});
+    _log('destroy_room sent: $roomId');
+  }
+
   bool sendFrame(Uint8List bytes) {
     if (state.value != WsState.connected || _channel == null) {
       _log('frame dropped: ws not connected');
@@ -242,6 +250,12 @@ class RealtimeWsService extends GetxService with WidgetsBindingObserver {
 
     if (type == 'room_joined') {
       _roomJoinCompleter?.complete(true);
+      return;
+    }
+
+    if (type == 'room_destroyed') {
+      roomDestroyedReason.value = payload['reason']?.toString() ?? '';
+      disconnect(manual: false);
       return;
     }
 
