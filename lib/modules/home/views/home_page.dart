@@ -1475,46 +1475,31 @@ class _GuideFrame extends StatelessWidget {
       builder: (context, constraints) {
         final w = constraints.maxWidth;
         final h = constraints.maxHeight;
-        // 引导框：宽度 55%，高度 65%，居中
-        final guideW = w * 0.55;
-        final guideH = h * 0.65;
-        final left = (w - guideW) / 2;
-        final top = (h - guideH) / 2;
 
         return Stack(
           children: [
-            // 四周半透明遮罩
+            // 人像轮廓遮罩（四周暗中间人形区域亮）
             CustomPaint(
               size: Size(w, h),
               painter: _MaskPainter(
-                cutoutLeft: left,
-                cutoutTop: top,
-                cutoutWidth: guideW,
-                cutoutHeight: guideH,
                 maskColor: const Color(0x8C000000),
               ),
             ),
-            // 引导线框
-            Positioned(
-              left: left,
-              top: top,
-              width: guideW,
-              height: guideH,
-              child: IgnorePointer(
-                child: CustomPaint(
-                  size: Size(guideW, guideH),
-                  painter: _GuideFramePainter(
-                    accentColor: accentColor,
-                    accentLight: accentLight,
-                  ),
+            // 人像轮廓引导线
+            IgnorePointer(
+              child: CustomPaint(
+                size: Size(w, h),
+                painter: _SilhouetteGuidePainter(
+                  accentColor: accentColor,
+                  accentLight: accentLight,
                 ),
               ),
             ),
-            // 提示文字
+            // 顶部提示文字
             Positioned(
               left: 0,
               right: 0,
-              top: top + guideH + 20,
+              top: h * 0.04,
               child: IgnorePointer(
                 child: Center(
                   child: ClipRRect(
@@ -1531,7 +1516,7 @@ class _GuideFrame extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          '请将头部、双肩和上半身置于框内',
+                          '请将头部、双肩和上半身置于轮廓内',
                           style: TextStyle(
                             color: accentLight,
                             fontSize: 13,
@@ -1545,6 +1530,24 @@ class _GuideFrame extends StatelessWidget {
                 ),
               ),
             ),
+            // 底部小提示
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: h * 0.06,
+              child: IgnorePointer(
+                child: Center(
+                  child: Text(
+                    '保持正脸面向摄像头',
+                    style: TextStyle(
+                      color: accentLight.withValues(alpha: 0.5),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         );
       },
@@ -1552,103 +1555,151 @@ class _GuideFrame extends StatelessWidget {
   }
 }
 
-/// 在四周画半透明遮罩，中间挖空
+/// 在四周画半透明遮罩，中间人像轮廓区域挖空
 class _MaskPainter extends CustomPainter {
-  _MaskPainter({
-    required this.cutoutLeft,
-    required this.cutoutTop,
-    required this.cutoutWidth,
-    required this.cutoutHeight,
-    required this.maskColor,
-  });
+  _MaskPainter({required this.maskColor});
 
-  final double cutoutLeft;
-  final double cutoutTop;
-  final double cutoutWidth;
-  final double cutoutHeight;
   final Color maskColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = maskColor;
+    final silhouette = _buildSilhouettePath(size.width, size.height);
     final path = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addRect(Rect.fromLTWH(
-        cutoutLeft, cutoutTop, cutoutWidth, cutoutHeight,
-      ))
+      ..addPath(silhouette, Offset.zero)
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(_MaskPainter old) =>
-      cutoutLeft != old.cutoutLeft ||
-      cutoutTop != old.cutoutTop ||
-      cutoutWidth != old.cutoutWidth ||
-      cutoutHeight != old.cutoutHeight;
+  bool shouldRepaint(_MaskPainter old) => true;
 }
 
-/// 画引导框的四角标线
-class _GuideFramePainter extends CustomPainter {
-  _GuideFramePainter({required this.accentColor, required this.accentLight});
+/// 画人像轮廓引导线
+class _SilhouetteGuidePainter extends CustomPainter {
+  _SilhouetteGuidePainter({
+    required this.accentColor,
+    required this.accentLight,
+  });
 
   final Color accentColor;
   final Color accentLight;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = accentLight.withValues(alpha: 0.7)
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
+    final silhouette = _buildSilhouettePath(size.width, size.height);
 
+    // 外发光
     final glowPaint = Paint()
-      ..color = accentColor.withValues(alpha: 0.2)
+      ..color = accentColor.withValues(alpha: 0.15)
+      ..style = PaintingStyle.stroke
       ..strokeWidth = 6.0
-      ..style = PaintingStyle.stroke;
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(silhouette, glowPaint);
 
-    const cornerLen = 24.0;
+    // 主线
+    final linePaint = Paint()
+      ..color = accentLight.withValues(alpha: 0.6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(silhouette, linePaint);
 
-    // 头顶弧线示意（肩部宽度提示）
-    final shoulderY = size.height * 0.28;
-    final shoulderPaint = Paint()
-      ..color = accentLight.withValues(alpha: 0.15)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawLine(
-      Offset(size.width * 0.15, shoulderY),
-      Offset(size.width * 0.85, shoulderY),
-      shoulderPaint,
-    );
-
-    // 四角
-    _drawCorner(canvas, glowPaint, 0, 0, cornerLen, cornerLen, true, true);
-    _drawCorner(canvas, paint, 0, 0, cornerLen, cornerLen, true, true);
-    _drawCorner(canvas, glowPaint, size.width, 0, -cornerLen, cornerLen, false, true);
-    _drawCorner(canvas, paint, size.width, 0, -cornerLen, cornerLen, false, true);
-    _drawCorner(canvas, glowPaint, 0, size.height, cornerLen, -cornerLen, true, false);
-    _drawCorner(canvas, paint, 0, size.height, cornerLen, -cornerLen, true, false);
-    _drawCorner(canvas, glowPaint, size.width, size.height, -cornerLen, -cornerLen, false, false);
-    _drawCorner(canvas, paint, size.width, size.height, -cornerLen, -cornerLen, false, false);
-  }
-
-  void _drawCorner(Canvas canvas, Paint paint, double startX, double startY,
-      double dx, double dy, bool right, bool down) {
-    canvas.drawLine(
-      Offset(startX, startY + dy * 0.4),
-      Offset(startX, startY + dy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(startX + dx * 0.4, startY),
-      Offset(startX + dx, startY),
-      paint,
-    );
+    // 内部微弱填充
+    final fillPaint = Paint()
+      ..color = accentColor.withValues(alpha: 0.04)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(silhouette, fillPaint);
   }
 
   @override
-  bool shouldRepaint(_GuideFramePainter old) => false;
+  bool shouldRepaint(_SilhouetteGuidePainter old) => false;
+}
+
+/// 构建半身人像轮廓 Path
+Path _buildSilhouettePath(double w, double h) {
+  // 比例参数（相对宽高）
+  final headSize = w * 0.185;          // 头部直径
+  final headCY = h * 0.20;             // 头部中心 Y
+  final neckW = w * 0.09;              // 脖子宽度
+  final shoulderW = w * 0.42;          // 肩膀宽度（半宽）
+  final waistY = h * 0.82;             // 底部 Y
+  final waistW = w * 0.32;             // 底部半宽
+  final cx = w / 2;                    // 水平居中
+
+  final path = Path();
+
+  // 从头顶开始，顺时针绘制半身轮廓
+  // 1. 头顶 → 右侧头部
+  path.addOval(Rect.fromCenter(
+    center: Offset(cx, headCY),
+    width: headSize,
+    height: headSize * 1.15,
+  ));
+
+  // 重新构建：从右耳下方开始向下画身体，
+  // 然后绕回来从左侧身体向上回到左耳下方，
+  // 最后与头部椭圆闭合
+
+  // 使用复合路径：身体路径 + 头部椭圆
+  // 身体路径
+  final body = Path();
+  final rightEarX = cx + headSize * 0.45;
+  final leftEarX = cx - headSize * 0.45;
+  final earY = headCY + headSize * 0.3;
+
+  body.moveTo(rightEarX, earY);
+  // 右肩曲线
+  body.quadraticBezierTo(
+    rightEarX + neckW * 0.5, earY + headSize * 0.15,
+    cx + neckW, earY + headSize * 0.35,
+  );
+  // 右肩到右上臂
+  body.quadraticBezierTo(
+    cx + shoulderW * 0.7, earY + headSize * 0.4,
+    cx + shoulderW, earY + headSize * 0.55,
+  );
+  // 右臂外侧到腰部
+  body.quadraticBezierTo(
+    cx + shoulderW * 1.05, earY + headSize * 0.7,
+    cx + waistW, waistY,
+  );
+  // 底部弧线
+  body.quadraticBezierTo(
+    cx, waistY + h * 0.04,
+    cx - waistW, waistY,
+  );
+  // 左臂外侧到肩
+  body.quadraticBezierTo(
+    cx - shoulderW * 1.05, earY + headSize * 0.7,
+    cx - shoulderW, earY + headSize * 0.55,
+  );
+  // 左肩到脖子
+  body.quadraticBezierTo(
+    cx - shoulderW * 0.7, earY + headSize * 0.4,
+    cx - neckW, earY + headSize * 0.35,
+  );
+  body.quadraticBezierTo(
+    leftEarX - neckW * 0.5, earY + headSize * 0.15,
+    leftEarX, earY,
+  );
+  body.close();
+
+  // 合并头部和身体
+  final combined = Path.combine(
+    PathOperation.union,
+    body,
+    Path()..addOval(Rect.fromCenter(
+      center: Offset(cx, headCY),
+      width: headSize,
+      height: headSize * 1.15,
+    )),
+  );
+
+  return combined;
 }
 
 // ======================== Camera Placeholder ========================
