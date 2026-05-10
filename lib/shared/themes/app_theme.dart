@@ -83,8 +83,16 @@ class AppTheme {
 
   /// 运行时主题色（由 ThemeService 更新），响应式 — 在 Obx 中读取即可自动追踪
   static ThemePreset get current => _currentRx.value;
-  static set current(ThemePreset v) => _currentRx.value = v;
+  static set current(ThemePreset v) {
+    _currentRx.value = v;
+    _themeVersion.value++;
+  }
+
   static final Rx<ThemePreset> _currentRx = Rx<ThemePreset>(_defaultPreset);
+
+  /// 每次主题切换时递增，供页面强制刷新用
+  static final RxInt _themeVersion = 0.obs;
+  static int get themeVersion => _themeVersion.value;
 
   static const ThemePreset _defaultPreset = ThemePreset(
     name: '深空靛蓝',

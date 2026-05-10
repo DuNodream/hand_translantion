@@ -269,6 +269,11 @@ class RealtimeWsService extends GetxService with WidgetsBindingObserver {
     _sessionService?.onRecognitionPayload(payload);
   }
 
+  /// 对外暴露：发送 JSON 消息（设置页模型切换等场景使用）
+  void sendJson(Map<String, dynamic> payload) {
+    _sendJson(payload);
+  }
+
   void _sendJson(Map<String, dynamic> payload) {
     _channel?.sink.add(jsonEncode(payload));
   }

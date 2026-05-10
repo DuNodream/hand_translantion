@@ -25,6 +25,8 @@ class HomePage extends GetView<HomePageController> {
   Widget build(BuildContext context) {
     final settings = Get.find<RuntimeSettingsService>();
     return Obx(() {
+        // 主题版本号——主题切换时强制刷新整个页面
+        AppTheme.themeVersion;
         final c = AppTheme.current;
         return MediaQuery(
             data: MediaQuery.of(context).copyWith(
@@ -601,6 +603,8 @@ class _CameraPanel extends GetView<HomePageController> {
                 }),
               ),
             ),
+            // Face/silhouette guide overlay
+            const Positioned.fill(child: _FaceGuideOverlay()),
             // Status badge
             const Positioned(top: 16, left: 16, child: _StatusBadge()),
             // Recognition indicator
@@ -1432,6 +1436,219 @@ class _QuickChip extends StatelessWidget {
       ),
     );
   }
+}
+
+// ======================== Face Guide Overlay ========================
+
+class _FaceGuideOverlay extends StatelessWidget {
+  const _FaceGuideOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.current;
+    final controller = Get.find<HomePageController>();
+    final settings = Get.find<RuntimeSettingsService>();
+    return Obx(() {
+      // 视频识别关闭或摄像头未就绪时隐藏
+      if (!settings.videoRecognitionEnabled.value) {
+        return const SizedBox.shrink();
+      }
+      final cameraState = controller.cameraService.state.value;
+      if (cameraState != CameraState.ready &&
+          cameraState != CameraState.streaming) {
+        return const SizedBox.shrink();
+      }
+      return _GuideFrame(accentColor: c.accent, accentLight: c.accentLight);
+    });
+  }
+}
+
+class _GuideFrame extends StatelessWidget {
+  const _GuideFrame({required this.accentColor, required this.accentLight});
+
+  final Color accentColor;
+  final Color accentLight;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        // 引导框：宽度 55%，高度 65%，居中
+        final guideW = w * 0.55;
+        final guideH = h * 0.65;
+        final left = (w - guideW) / 2;
+        final top = (h - guideH) / 2;
+
+        return Stack(
+          children: [
+            // 四周半透明遮罩
+            CustomPaint(
+              size: Size(w, h),
+              painter: _MaskPainter(
+                cutoutLeft: left,
+                cutoutTop: top,
+                cutoutWidth: guideW,
+                cutoutHeight: guideH,
+                maskColor: const Color(0x8C000000),
+              ),
+            ),
+            // 引导线框
+            Positioned(
+              left: left,
+              top: top,
+              width: guideW,
+              height: guideH,
+              child: IgnorePointer(
+                child: CustomPaint(
+                  size: Size(guideW, guideH),
+                  painter: _GuideFramePainter(
+                    accentColor: accentColor,
+                    accentLight: accentLight,
+                  ),
+                ),
+              ),
+            ),
+            // 提示文字
+            Positioned(
+              left: 0,
+              right: 0,
+              top: top + guideH + 20,
+              child: IgnorePointer(
+                child: Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0x80000000),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '请将头部、双肩和上半身置于框内',
+                          style: TextStyle(
+                            color: accentLight,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 在四周画半透明遮罩，中间挖空
+class _MaskPainter extends CustomPainter {
+  _MaskPainter({
+    required this.cutoutLeft,
+    required this.cutoutTop,
+    required this.cutoutWidth,
+    required this.cutoutHeight,
+    required this.maskColor,
+  });
+
+  final double cutoutLeft;
+  final double cutoutTop;
+  final double cutoutWidth;
+  final double cutoutHeight;
+  final Color maskColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = maskColor;
+    final path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addRect(Rect.fromLTWH(
+        cutoutLeft, cutoutTop, cutoutWidth, cutoutHeight,
+      ))
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_MaskPainter old) =>
+      cutoutLeft != old.cutoutLeft ||
+      cutoutTop != old.cutoutTop ||
+      cutoutWidth != old.cutoutWidth ||
+      cutoutHeight != old.cutoutHeight;
+}
+
+/// 画引导框的四角标线
+class _GuideFramePainter extends CustomPainter {
+  _GuideFramePainter({required this.accentColor, required this.accentLight});
+
+  final Color accentColor;
+  final Color accentLight;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = accentLight.withValues(alpha: 0.7)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+
+    final glowPaint = Paint()
+      ..color = accentColor.withValues(alpha: 0.2)
+      ..strokeWidth = 6.0
+      ..style = PaintingStyle.stroke;
+
+    const cornerLen = 24.0;
+
+    // 头顶弧线示意（肩部宽度提示）
+    final shoulderY = size.height * 0.28;
+    final shoulderPaint = Paint()
+      ..color = accentLight.withValues(alpha: 0.15)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawLine(
+      Offset(size.width * 0.15, shoulderY),
+      Offset(size.width * 0.85, shoulderY),
+      shoulderPaint,
+    );
+
+    // 四角
+    _drawCorner(canvas, glowPaint, 0, 0, cornerLen, cornerLen, true, true);
+    _drawCorner(canvas, paint, 0, 0, cornerLen, cornerLen, true, true);
+    _drawCorner(canvas, glowPaint, size.width, 0, -cornerLen, cornerLen, false, true);
+    _drawCorner(canvas, paint, size.width, 0, -cornerLen, cornerLen, false, true);
+    _drawCorner(canvas, glowPaint, 0, size.height, cornerLen, -cornerLen, true, false);
+    _drawCorner(canvas, paint, 0, size.height, cornerLen, -cornerLen, true, false);
+    _drawCorner(canvas, glowPaint, size.width, size.height, -cornerLen, -cornerLen, false, false);
+    _drawCorner(canvas, paint, size.width, size.height, -cornerLen, -cornerLen, false, false);
+  }
+
+  void _drawCorner(Canvas canvas, Paint paint, double startX, double startY,
+      double dx, double dy, bool right, bool down) {
+    canvas.drawLine(
+      Offset(startX, startY + dy * 0.4),
+      Offset(startX, startY + dy),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(startX + dx * 0.4, startY),
+      Offset(startX + dx, startY),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GuideFramePainter old) => false;
 }
 
 // ======================== Camera Placeholder ========================

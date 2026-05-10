@@ -29,7 +29,23 @@
       "Bash(nvidia-smi)",
       "Read(//d//**)",
       "Bash(flutter analyze *)",
-      "Bash(dart analyze *)"
+      "Bash(dart analyze *)",
+      "Read(//d/a/TFNet/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(pip install *)",
+      "Bash(flutter pub *)",
+      "Bash(flutter --version)",
+      "Bash(flutter build *)",
+      "Bash(dart pub *)",
+      "Bash(flutter devices *)",
+      "Bash(flutter clean *)",
+      "Bash(flutter run *)",
+      "Bash(flutter doctor *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

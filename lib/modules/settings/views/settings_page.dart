@@ -13,6 +13,8 @@ class SettingsPage extends GetView<SettingsController> {
   Widget build(BuildContext context) {
     return Obx(() {
         final c = AppTheme.current;
+        // 主题版本号——切换时强制刷新
+        AppTheme.themeVersion;
         return CupertinoPageScaffold(
           backgroundColor: c.background,
           navigationBar: CupertinoNavigationBar(
@@ -83,6 +85,44 @@ class SettingsPage extends GetView<SettingsController> {
                 subtitle: settings.speechEngineDisplayName(settings.speechEngine.value),
                 onTap: () => _showSpeechEnginePicker(context),
               ),
+              const SizedBox(height: 24),
+              _SectionHeader(title: '模型'),
+              _SettingsTile(
+                icon: CupertinoIcons.tray_full,
+                label: '识别模型',
+                subtitle: controller.currentModelLabel,
+                onTap: () => _showModelPicker(context),
+              ),
+              if (settings.devModeEnabled.value) ...[
+                const SizedBox(height: 24),
+                _SectionHeader(title: '开发者模式'),
+                _SwitchTile(
+                  icon: CupertinoIcons.hammer,
+                  label: '启用开发者模式',
+                  subtitle: '显示高级选项和调试功能',
+                  value: settings.devModeEnabled.value,
+                  onChanged: (_) => controller.toggleDevMode(),
+                ),
+                if (settings.devModeEnabled.value) ...[
+                  const SizedBox(height: 16),
+                  _SettingsTile(
+                    icon: CupertinoIcons.eye,
+                    label: '直接进入识别页',
+                    subtitle: '跳过房间创建，直接进入手语识别',
+                    onTap: controller.enterDevRecognitionPage,
+                  ),
+                ],
+              ] else ...[
+                const SizedBox(height: 24),
+                _SectionHeader(title: '开发者'),
+                _SwitchTile(
+                  icon: CupertinoIcons.hammer,
+                  label: '开发者模式',
+                  subtitle: '显示高级选项和调试功能',
+                  value: settings.devModeEnabled.value,
+                  onChanged: (_) => controller.toggleDevMode(),
+                ),
+              ],
               const SizedBox(height: 24),
               _SectionHeader(title: '关于'),
               _InfoTile(
@@ -173,6 +213,33 @@ class SettingsPage extends GetView<SettingsController> {
                 Get.back<void>();
               },
               child: Text(themeService.presetNames[i]),
+            ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Get.back<void>(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showModelPicker(BuildContext context) {
+    final settings = controller.settings;
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('选择识别模型'),
+        message: const Text('切换模型后将在下一次识别时生效'),
+        actions: [
+          for (final model in settings.availableModels)
+            CupertinoActionSheetAction(
+              isDefaultAction: model == settings.selectedModel.value,
+              onPressed: () {
+                controller.selectModel(model);
+                Get.back<void>();
+              },
+              child: Text(model),
             ),
           CupertinoActionSheetAction(
             isDestructiveAction: true,

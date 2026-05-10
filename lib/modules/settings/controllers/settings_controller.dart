@@ -53,6 +53,52 @@ class SettingsController extends GetxController {
     }
   }
 
+  // ==================== 开发者模式 ====================
+
+  void toggleDevMode() {
+    _settings.devModeEnabled.value = !_settings.devModeEnabled.value;
+  }
+
+  /// 开发者模式：不经过房间，直接进入识别页面
+  void enterDevRecognitionPage() {
+    Get.offNamed('/home', arguments: {
+      'room_id': 'dev-mode',
+      'role': 'signer',
+      'is_creator': true,
+    });
+  }
+
+  // ==================== 模型切换 ====================
+
+  String get currentModelLabel {
+    final m = _settings.selectedModel.value;
+    return m.isEmpty ? '默认模型' : m;
+  }
+
+  void selectModel(String modelName) {
+    _settings.selectedModel.value = modelName;
+    // 通过 WebSocket 通知后端切换模型
+    _sendModelSwitch(modelName);
+  }
+
+  void _sendModelSwitch(String modelName) {
+    if (_ws.state.value != WsState.connected) {
+      Get.snackbar(
+        '提示',
+        '模型将在下次连接时切换',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xCC1A1A2E),
+        colorText: const Color(0xFFFFFFFF),
+        duration: const Duration(seconds: 3),
+      );
+      return;
+    }
+    _ws.sendJson({
+      'type': 'switch_model',
+      'model': modelName,
+    });
+  }
+
   @override
   void onClose() {
     serverUrlController.dispose();

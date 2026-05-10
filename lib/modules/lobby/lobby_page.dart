@@ -13,10 +13,12 @@ class LobbyPage extends GetView<LobbyController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-        final c = AppTheme.current;
-        return CupertinoPageScaffold(
-          backgroundColor: c.background,
-          child: SafeArea(
+      final c = AppTheme.current;
+      // 主题版本号——切换时强制刷新
+      AppTheme.themeVersion;
+      return CupertinoPageScaffold(
+        backgroundColor: c.background,
+        child: SafeArea(
             child: Stack(
               children: [
                 Center(

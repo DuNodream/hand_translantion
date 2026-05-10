@@ -18,7 +18,26 @@ class RuntimeSettingsService extends GetxService {
   // 语音引擎：'system' | 'none'
   final RxString speechEngine = 'system'.obs;
 
-  void initialize() {}
+  // ========== 开发者模式 ==========
+  final RxBool devModeEnabled = false.obs;
+
+  // ========== 模型切换 ==========
+  final RxString selectedModel = ''.obs;
+  final RxList<String> availableModels = <String>[].obs;
+  static const String modelDir = r'D:\a\TFNet';
+  static const List<String> knownModels = [
+    'TFNet-CE-CSL-CSLDaily-32.46.pth',
+    'CECSL-best.pt',
+    'CECSL-Light-best.pt',
+    'CECSL-Light-Char-best.pt',
+    '1.pth',
+    '1.int8.pth',
+  ];
+
+  void initialize() {
+    availableModels.value = List.from(knownModels);
+    if (knownModels.isNotEmpty) selectedModel.value = knownModels[0];
+  }
 
   String resolveWsUrl(String fallback) => wsOverride.value?.trim().isNotEmpty == true
       ? wsOverride.value!.trim()
