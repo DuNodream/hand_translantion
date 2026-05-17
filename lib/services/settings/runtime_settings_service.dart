@@ -15,8 +15,34 @@ class RuntimeSettingsService extends GetxService {
   // 视频识别开关（手语者模式可关闭）
   final RxBool videoRecognitionEnabled = true.obs;
 
+  // 人像引导框
+  final RxBool personGuideEnabled = true.obs;
+
   // 语音引擎：'system' | 'none'
   final RxString speechEngine = 'system'.obs;
+
+  // ========== 作弊者模式 ==========
+  final RxBool cheaterMode = false.obs;
+  final RxList<String> cheaterScript = <String>[
+    '我需要帮助',
+    '你知道附近的有名的景点在哪里吗',
+  ].obs;
+
+  void updateCheaterScript(int index, String text) {
+    if (index >= 0 && index < cheaterScript.length) {
+      cheaterScript[index] = text;
+    }
+  }
+
+  void addCheaterScriptItem(String text) {
+    cheaterScript.add(text);
+  }
+
+  void removeCheaterScriptItem(int index) {
+    if (cheaterScript.length > 1) {
+      cheaterScript.removeAt(index);
+    }
+  }
 
   // ========== 开发者模式 ==========
   final RxBool devModeEnabled = false.obs;

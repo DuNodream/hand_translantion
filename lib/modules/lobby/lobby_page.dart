@@ -71,8 +71,10 @@ class _BrandPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    return ClipRRect(
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
@@ -97,30 +99,32 @@ class _BrandPanel extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // App icon
+                    // 公司品牌 Logo：透明背景 + BoxFit.contain，避免裁掉文字；
+                    // 用柔和的 accent 光晕保持与整体玻璃态风格协调。
                     Container(
-                      width: 96,
-                      height: 96,
+                      width: 132,
+                      height: 132,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [c.accent, c.accentLight],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(28),
+                        // 微弱径向光晕，不抢 logo 自身颜色
                         boxShadow: [
                           BoxShadow(
-                            color: c.accent.withValues(alpha: 0.3),
-                            blurRadius: 24,
+                            color: c.accent.withValues(alpha: 0.22),
+                            blurRadius: 36,
+                            spreadRadius: 2,
                             offset: const Offset(0, 8),
                           ),
                         ],
                       ),
                       alignment: Alignment.center,
-                      child: Icon(
-                        CupertinoIcons.hand_thumbsup_fill,
-                        size: 44,
-                        color: c.textPrimary,
+                      child: Image.asset(
+                        'assets/images/lobby_brand.png',
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (_, __, ___) => Icon(
+                          CupertinoIcons.hand_thumbsup_fill,
+                          size: 60,
+                          color: c.accentLight,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 28),
@@ -160,6 +164,7 @@ class _BrandPanel extends StatelessWidget {
         ),
       ),
     );
+    });
   }
 }
 
@@ -170,8 +175,10 @@ class _FeatureRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    return Row(
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
@@ -202,6 +209,7 @@ class _FeatureRow extends StatelessWidget {
         ),
       ],
     );
+    });
   }
 }
 
@@ -210,9 +218,10 @@ class _ConnectionStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     final ws = Get.find<RealtimeWsService>();
     return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
       final connected = ws.state.value == WsState.connected;
       final color = connected ? c.success : c.textMuted;
       final label = connected ? '服务已连接' : '等待连接';
@@ -264,8 +273,10 @@ class _ControlsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    return ClipRRect(
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
@@ -316,139 +327,202 @@ class _ControlsPanel extends StatelessWidget {
         ),
       ),
     );
+    });
   }
 }
 
 // ======================== Join Room Section ========================
 
-class _JoinSection extends GetView<LobbyController> {
+class _JoinSection extends StatefulWidget {
   const _JoinSection();
 
   @override
+  State<_JoinSection> createState() => _JoinSectionState();
+}
+
+class _JoinSectionState extends State<_JoinSection> {
+  @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(CupertinoIcons.qrcode_viewfinder, size: 20, color: c.accentLight),
-            const SizedBox(width: 10),
-            Text(
-              '加入已有房间',
-              style: TextStyle(
-                color: c.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              flex: 4,
-              child: CupertinoTextField(
-                controller: controller.roomCodeController,
-                placeholder: '输入4位房间号',
-                textAlign: TextAlign.center,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
+    final controller = Get.find<LobbyController>();
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(CupertinoIcons.qrcode_viewfinder, size: 16, color: c.accentLight),
+              const SizedBox(width: 8),
+              Text(
+                '加入已有房间',
                 style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 36,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 12,
+                  color: c.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
-                placeholderStyle: TextStyle(
-                  color: c.textMuted,
-                  fontSize: 18,
-                  letterSpacing: 0,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: c.glassBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: c.glassBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CupertinoTextField(
+                  controller: controller.roomCodeController,
+                  placeholder: '输入4位房间号',
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 6,
+                  ),
+                  placeholderStyle: TextStyle(
+                    color: c.textMuted,
+                    fontSize: 14,
+                    letterSpacing: 0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.glassBg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: c.glassBorder),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
-                decoration: BoxDecoration(
-                  color: c.glassBg,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: c.glassBorder),
+                const SizedBox(height: 16),
+                Text(
+                  '选择身份',
+                  style: TextStyle(
+                    color: c.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 18),
-              ),
+                const SizedBox(height: 10),
+                Obx(() {
+                  final role = controller.selectedJoinRole.value;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _RoleToggle(
+                          icon: CupertinoIcons.hand_raised,
+                          label: '手语者',
+                          selected: role == 'signer',
+                          onTap: () => controller.selectedJoinRole.value = 'signer',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _RoleToggle(
+                          icon: CupertinoIcons.chat_bubble_2,
+                          label: '对话者',
+                          selected: role == 'chat',
+                          onTap: () => controller.selectedJoinRole.value = 'chat',
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+                const SizedBox(height: 18),
+                GestureDetector(
+                  onTap: controller.isJoining.value
+                      ? null
+                      : () => controller.joinRoom(controller.selectedJoinRole.value),
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: c.accent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Obx(
+                      () => controller.isJoining.value
+                          ? const CupertinoActivityIndicator(
+                              color: CupertinoColors.white,
+                              radius: 12,
+                            )
+                          : const Text(
+                              '加入房间',
+                              style: TextStyle(
+                                color: CupertinoColors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 2,
-              child: _RoleJoinButton(
-                icon: CupertinoIcons.hand_raised,
-                label: '手语者',
-                loading: controller.isJoining.value,
-                onTap: controller.isJoining.value ? null : () => controller.joinRoom('signer'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 2,
-              child: _RoleJoinButton(
-                icon: CupertinoIcons.chat_bubble_2,
-                label: '对话者',
-                loading: controller.isJoining.value,
-                onTap: controller.isJoining.value ? null : () => controller.joinRoom('chat'),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+          ),
+        ],
+      );
+    });
   }
 }
 
-class _RoleJoinButton extends StatelessWidget {
-  const _RoleJoinButton({
+// ======================== Role Toggle Button ========================
+
+class _RoleToggle extends StatelessWidget {
+  const _RoleToggle({
     required this.icon,
     required this.label,
-    required this.loading,
-    this.onTap,
+    required this.selected,
+    required this.onTap,
   });
 
   final IconData icon;
   final String label;
-  final bool loading;
-  final VoidCallback? onTap;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [c.surfaceLight, c.surface],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 36,
+          decoration: BoxDecoration(
+            color: selected ? c.accent : const Color(0x00000000),
+            borderRadius: BorderRadius.circular(8),
+            border: selected ? null : Border.all(color: c.glassBorder),
           ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: c.glassBorder),
-        ),
-        alignment: Alignment.center,
-        child: loading
-            ? const CupertinoActivityIndicator(radius: 14)
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 20, color: c.accentLight),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: c.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: selected ? CupertinoColors.white : c.textMuted,
               ),
-      ),
-    );
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? CupertinoColors.white : c.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
   }
 }
 
@@ -459,10 +533,12 @@ class _CreateButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     final controller = Get.find<LobbyController>();
     return Obx(
-      () => Row(
+      () {
+        AppTheme.themeVersion;
+        final c = AppTheme.current;
+        return Row(
         children: [
           Expanded(
             child: _CreateButton(
@@ -480,13 +556,14 @@ class _CreateButtons extends StatelessWidget {
               icon: CupertinoIcons.chat_bubble_2_fill,
               label: '创建房间',
               subtitle: '对话者模式 · 文字回复',
-              gradientColors: [const Color(0xFF7C3AED), c.accentLight],
+              gradientColors: [c.accent, c.accentLight],
               loading: controller.isCreating.value,
               onTap: controller.isCreating.value ? null : () => controller.createRoom('chat'),
             ),
           ),
         ],
-      ),
+      );
+      },
     );
   }
 }
@@ -510,7 +587,6 @@ class _CreateButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -535,12 +611,12 @@ class _CreateButton extends StatelessWidget {
             ? const CupertinoActivityIndicator(radius: 16)
             : Column(
                 children: [
-                  Icon(icon, size: 32, color: c.textPrimary),
+                  Icon(icon, size: 32, color: CupertinoColors.white),
                   const SizedBox(height: 12),
                   Text(
                     label,
-                    style: TextStyle(
-                      color: c.textPrimary,
+                    style: const TextStyle(
+                      color: CupertinoColors.white,
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                     ),
@@ -548,8 +624,8 @@ class _CreateButton extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: c.textPrimary,
+                    style: const TextStyle(
+                      color: CupertinoColors.white,
                       fontSize: 13,
                     ),
                   ),
@@ -567,8 +643,9 @@ class _ErrorHint extends GetView<LobbyController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
       if (controller.errorMessage.isEmpty) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(top: 4),

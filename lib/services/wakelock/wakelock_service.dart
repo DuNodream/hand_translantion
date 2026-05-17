@@ -4,6 +4,14 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 class WakeLockService extends GetxService {
   final RxBool enabled = true.obs;
 
+  @override
+  void onInit() {
+    super.onInit();
+    if (enabled.value) {
+      WakelockPlus.enable();
+    }
+  }
+
   void toggle() {
     enabled.value = !enabled.value;
     if (enabled.value) {

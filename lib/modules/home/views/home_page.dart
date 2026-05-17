@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import '../../../data/models/chat_message.dart';
 import '../../../services/camera/camera_service.dart';
 import '../../../services/connection/realtime_ws_service.dart';
+import '../../../services/debug/debug_log_service.dart';
 import '../../../services/session/session_service.dart';
 import '../../../services/settings/runtime_settings_service.dart';
 import '../../../services/speech/speech_service.dart';
@@ -36,6 +37,8 @@ class HomePage extends GetView<HomePageController> {
               backgroundColor: c.background,
               child: SafeArea(
                 child: Obx(() {
+              // 主题版本号——主题切换时强制刷新子树
+              AppTheme.themeVersion;
               if (controller.showLoading) {
                 return const _LoadingState();
               }
@@ -52,7 +55,7 @@ class HomePage extends GetView<HomePageController> {
                 );
               }
               return Column(
-                children: const [
+                children: [
                   _TopBar(),
                   Expanded(child: _WorkbenchLayout()),
                 ],
@@ -72,10 +75,11 @@ class _TopBar extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    final ws = Get.find<RealtimeWsService>();
-    final settings = Get.find<RuntimeSettingsService>();
     return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      final ws = Get.find<RealtimeWsService>();
+      final settings = Get.find<RuntimeSettingsService>();
       final connected = ws.state.value == WsState.connected;
       final wsColor = connected ? c.success : c.warning;
       final wsLabel = switch (ws.state.value) {
@@ -378,10 +382,12 @@ class _QuickSettingsPanel extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    final settings = Get.find<RuntimeSettingsService>();
-    final wakeLock = Get.find<WakeLockService>();
-    return ClipRRect(
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      final settings = Get.find<RuntimeSettingsService>();
+      final wakeLock = Get.find<WakeLockService>();
+      return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
@@ -404,29 +410,145 @@ class _QuickSettingsPanel extends GetView<HomePageController> {
                 ),
               ),
               const SizedBox(height: 16),
-              Obx(() => _QuickSwitch(
+              Obx(() {
+                AppTheme.themeVersion;
+                return _QuickSwitch(
                 icon: CupertinoIcons.videocam,
                 label: '视频识别',
                 value: settings.videoRecognitionEnabled.value,
                 onChanged: (_) => settings.toggleVideoRecognition(),
-              )),
+              );
+              }),
               const SizedBox(height: 10),
-              Obx(() => _QuickSwitch(
+              Obx(() {
+                AppTheme.themeVersion;
+                return _QuickSwitch(
                 icon: CupertinoIcons.sun_max,
                 label: '屏幕常亮',
                 value: wakeLock.enabled.value,
                 onChanged: (_) => wakeLock.toggle(),
-              )),
+              );
+              }),
               const SizedBox(height: 10),
-              Obx(() => _QuickSwitch(
+              Obx(() {
+                AppTheme.themeVersion;
+                return _QuickSwitch(
                 icon: CupertinoIcons.textformat_size,
                 label: '大字体',
                 value: settings.textScale.value > 1.0,
                 onChanged: (v) => settings.textScale.value = v ? 1.3 : 1.0,
-              )),
+              );
+              }),
             ],
           ),
         ),
+      ),
+      );
+    });
+}
+}
+
+// ======================== Debug Overlay (开发者模式) ========================
+
+class _DebugOverlay extends GetView<HomePageController> {
+  @override
+  Widget build(BuildContext context) {
+    final c = AppTheme.current;
+    final debug = Get.find<DebugLogService>();
+    final settings = Get.find<RuntimeSettingsService>();
+    final ws = Get.find<RealtimeWsService>();
+    return GestureDetector(
+      onTap: () => controller.showDebugOverlay.value = false,
+      child: Container(
+        color: const Color(0xCC000000),
+        child: SafeArea(
+          child: GestureDetector(
+            onTap: () {}, // 阻止点击穿透
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: c.glassBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(CupertinoIcons.hammer_fill, size: 18, color: c.warning),
+                      const SizedBox(width: 8),
+                      Text('开发者调试面板',
+                        style: TextStyle(color: c.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => controller.showDebugOverlay.value = false,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(color: c.glassBg, borderRadius: BorderRadius.circular(8)),
+                          child: Icon(CupertinoIcons.xmark, size: 14, color: c.textMuted),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Session info
+                  _debugRow(c, '房间', settings.roomCode.value ?? '无'),
+                  _debugRow(c, '角色', settings.role.value ?? '无'),
+                  _debugRow(c, 'Session', controller.sessionService.sessionId.value),
+                  _debugRow(c, 'WS 状态', ws.state.value.name),
+                  _debugRow(c, 'WS URL', ws.activeUrl),
+                  _debugRow(c, '模型', settings.selectedModel.value.isEmpty ? '默认' : settings.selectedModel.value),
+                  _debugRow(c, '手语者', '${controller.isSigner.value}'),
+                  _debugRow(c, '摄像头', controller.cameraService.state.value.name),
+                  _debugRow(c, '人像检测', '${controller.cameraService.personInFrame.value}'),
+                  _debugRow(c, '作弊模式', '${settings.cheaterMode.value}'),
+                  _debugRow(c, '语音引擎', settings.speechEngine.value),
+                  const SizedBox(height: 12),
+                  // Debug log
+                  Text('调试日志', style: TextStyle(color: c.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Obx(() {
+                      final logs = debug.entries;
+                      if (logs.isEmpty) {
+                        return Center(
+                          child: Text('暂无日志', style: TextStyle(color: c.textMuted, fontSize: 12)),
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: logs.length,
+                        itemBuilder: (_, i) {
+                          final e = logs[i];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Text(
+                              '[${e.time.hour.toString().padLeft(2, '0')}:${e.time.minute.toString().padLeft(2, '0')}:${e.time.second.toString().padLeft(2, '0')}] [${e.scope}] ${e.message}',
+                              style: TextStyle(color: c.textMuted, fontSize: 10, fontFamily: 'monospace'),
+                            ),
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _debugRow(ThemePreset c, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(width: 70, child: Text(label, style: TextStyle(color: c.textMuted, fontSize: 11))),
+          Expanded(child: Text(value, style: TextStyle(color: c.textPrimary, fontSize: 11, fontFamily: 'monospace'))),
+        ],
       ),
     );
   }
@@ -476,6 +598,7 @@ class _WorkbenchLayout extends GetView<HomePageController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
+      AppTheme.themeVersion;
       return Stack(
         children: [
           Padding(
@@ -492,16 +615,56 @@ class _WorkbenchLayout extends GetView<HomePageController> {
               width: 260,
               child: _QuickSettingsPanel(),
             ),
+          // Debug overlay (开发者模式)
+          if (controller.showDebugOverlay.value)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _DebugOverlay(),
+            ),
+          // Debug floating button (仅开发者模式显示)
+          Obx(() {
+            AppTheme.themeVersion;
+            final c = AppTheme.current;
+            final devMode = Get.find<RuntimeSettingsService>().devModeEnabled.value;
+            if (!devMode) return const SizedBox.shrink();
+            return Positioned(
+              right: 20,
+              bottom: 20,
+              child: GestureDetector(
+                onTap: () => controller.showDebugOverlay.toggle(),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: c.warning.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: c.warning.withValues(alpha: 0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(CupertinoIcons.hammer, size: 20, color: CupertinoColors.white),
+                ),
+              ),
+            );
+          }),
         ],
       );
     });
   }
 
   Widget _signerLayout() {
-    return const Row(
+    return Row(
       children: [
         Expanded(flex: 58, child: _CameraPanel()),
-        SizedBox(width: 16),
+        const SizedBox(width: 16),
         Expanded(flex: 42, child: _RightPanel()),
       ],
     );
@@ -518,7 +681,7 @@ class _WorkbenchLayout extends GetView<HomePageController> {
         ],
       );
     }
-    return const Row(
+    return Row(
       children: [
         Expanded(child: _RightPanel()),
       ],
@@ -533,9 +696,10 @@ class _CameraPanel extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     final settings = Get.find<RuntimeSettingsService>();
     return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
       if (!settings.videoRecognitionEnabled.value) {
         return _buildContainer(
           child: Stack(
@@ -612,6 +776,7 @@ class _CameraPanel extends GetView<HomePageController> {
               top: 16,
               right: 16,
               child: Obx(() {
+                AppTheme.themeVersion;
                 final recognizing = controller.sessionService.isRecognizing.value;
                 if (!recognizing) return const SizedBox.shrink();
                 return ClipRRect(
@@ -652,13 +817,7 @@ class _CameraPanel extends GetView<HomePageController> {
                 );
               }),
             ),
-            // Bottom guidance
-            Positioned(
-              bottom: 18,
-              left: 18,
-              right: 18,
-              child: _buildGuidance(),
-            ),
+            // 底部提示由 _FaceGuideOverlay 提供，此处不再重复
           ],
         ),
       );
@@ -676,57 +835,6 @@ class _CameraPanel extends GetView<HomePageController> {
       child: child,
     );
   }
-
-  Widget _buildGuidance() {
-    final c = AppTheme.current;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0x80000000),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: c.glassBorder.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: c.accent.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                alignment: Alignment.center,
-                child: Icon(CupertinoIcons.hand_raised, size: 12, color: c.accentLight),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Obx(() {
-                  final caption = controller.sessionService.liveCaption.value;
-                  return Text(
-                    caption == '等待识别开始'
-                        ? '请将双手放在预览框中央，保持上半身在画面内'
-                        : caption,
-                    style: TextStyle(
-                      color: controller.sessionService.isRecognizing.value
-                          ? c.accentLight
-                          : c.textSecondary,
-                      fontSize: 12,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  );
-                }),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ======================== Status Badge ========================
@@ -736,9 +844,10 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     final ws = Get.find<RealtimeWsService>();
     return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
       final connected = ws.state.value == WsState.connected;
       final color = connected ? c.success : c.warning;
       final text = switch (ws.state.value) {
@@ -804,8 +913,10 @@ class _RightPanel extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    return ClipRRect(
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
@@ -815,7 +926,7 @@ class _RightPanel extends GetView<HomePageController> {
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: c.glassBorder),
           ),
-          child: const Column(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _ChatHeader(),
@@ -829,7 +940,8 @@ class _RightPanel extends GetView<HomePageController> {
           ),
         ),
       ),
-    );
+      );
+    });
   }
 }
 
@@ -840,10 +952,12 @@ class _ChatHeader extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    final session = controller.sessionService;
-    final settings = Get.find<RuntimeSettingsService>();
-    return Padding(
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      final session = controller.sessionService;
+      final settings = Get.find<RuntimeSettingsService>();
+      return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
@@ -863,6 +977,8 @@ class _ChatHeader extends GetView<HomePageController> {
           ),
           const SizedBox(width: 10),
           Obx(() {
+            AppTheme.themeVersion;
+            final c = AppTheme.current;
             final code = settings.roomCode.value;
             return Text(
               code != null ? '房间 $code' : '对话',
@@ -875,6 +991,8 @@ class _ChatHeader extends GetView<HomePageController> {
           }),
           // Message count
           Obx(() {
+            AppTheme.themeVersion;
+            final c = AppTheme.current;
             if (session.messages.isEmpty) return const SizedBox.shrink();
             return Padding(
               padding: const EdgeInsets.only(left: 8),
@@ -921,7 +1039,8 @@ class _ChatHeader extends GetView<HomePageController> {
           ),
         ],
       ),
-    );
+      );
+    });
   }
 
   void _showAllPhrases(BuildContext context) {
@@ -968,10 +1087,12 @@ class _LiveCaptionBar extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     final session = controller.sessionService;
     return Obx(
-      () => Padding(
+      () {
+        AppTheme.themeVersion;
+        final c = AppTheme.current;
+        return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
@@ -1001,7 +1122,8 @@ class _LiveCaptionBar extends GetView<HomePageController> {
             ),
           ],
         ),
-      ),
+      );
+      },
     );
   }
 }
@@ -1013,9 +1135,10 @@ class _ConversationBody extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     final session = controller.sessionService;
     return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
       if (session.messages.isEmpty) {
         return Center(
           child: Padding(
@@ -1110,10 +1233,10 @@ class _ChatBubble extends StatelessWidget {
     if (isMe) {
       bubbleColor = c.chatBubbleMe;
     } else if (message.origin == MessageOrigin.sign) {
-      bubbleColor = const Color(0xFF1E3A5F);
+      bubbleColor = c.chatBubbleSign;
       prefixIcon = CupertinoIcons.hand_raised;
     } else if (message.origin == MessageOrigin.speech) {
-      bubbleColor = const Color(0xFF2D1B69);
+      bubbleColor = c.chatBubbleSpeech;
       prefixIcon = CupertinoIcons.mic;
     } else {
       bubbleColor = c.chatBubbleOther;
@@ -1219,15 +1342,18 @@ class _ComposerBar extends GetView<HomePageController> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
     final speech = Get.find<SpeechService>();
     final session = Get.find<SessionService>();
-    return Padding(
+    return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       child: Row(
         children: [
           // Quick phrases (only show when no messages)
           Obx(() {
+            AppTheme.themeVersion;
             if (session.messages.isNotEmpty) return const SizedBox.shrink();
             return Row(
               mainAxisSize: MainAxisSize.min,
@@ -1247,8 +1373,9 @@ class _ComposerBar extends GetView<HomePageController> {
           }),
           // Mic button
           Obx(() {
-            final settings = Get.find<RuntimeSettingsService>();
-            if (settings.speechEngine.value == 'none') return const SizedBox.shrink();
+            AppTheme.themeVersion;
+            final s = Get.find<RuntimeSettingsService>();
+            if (s.speechEngine.value == 'none') return const SizedBox.shrink();
             final listening = speech.state.value == SpeechState.listening;
             final unavailable = speech.state.value == SpeechState.unavailable;
             return Padding(
@@ -1296,7 +1423,8 @@ class _ComposerBar extends GetView<HomePageController> {
           _SendButton(onTap: controller.sendCurrentInput),
         ],
       ),
-    );
+      );
+    });
   }
 
   void _showSpeechUnavailable(BuildContext context) {
@@ -1445,10 +1573,11 @@ class _FaceGuideOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppTheme.current;
-    final controller = Get.find<HomePageController>();
     final settings = Get.find<RuntimeSettingsService>();
     return Obx(() {
+      AppTheme.themeVersion;
+      final c = AppTheme.current;
+      final controller = Get.find<HomePageController>();
       // 视频识别关闭或摄像头未就绪时隐藏
       if (!settings.videoRecognitionEnabled.value) {
         return const SizedBox.shrink();
@@ -1456,6 +1585,12 @@ class _FaceGuideOverlay extends StatelessWidget {
       final cameraState = controller.cameraService.state.value;
       if (cameraState != CameraState.ready &&
           cameraState != CameraState.streaming) {
+        return const SizedBox.shrink();
+      }
+      // 人像引导框开关关闭时始终隐藏
+      if (!settings.personGuideEnabled.value) return const SizedBox.shrink();
+      // 人像在画面中时隐藏引导框，不在时显示
+      if (controller.cameraService.personInFrame.value) {
         return const SizedBox.shrink();
       }
       return _GuideFrame(accentColor: c.accent, accentLight: c.accentLight);
@@ -1590,27 +1725,27 @@ class _SilhouetteGuidePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final silhouette = _buildSilhouettePath(size.width, size.height);
 
-    // 外发光
+    // 外发光（柔和）
     final glowPaint = Paint()
-      ..color = accentColor.withValues(alpha: 0.15)
+      ..color = accentColor.withValues(alpha: 0.12)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 6.0
+      ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(silhouette, glowPaint);
 
     // 主线
     final linePaint = Paint()
-      ..color = accentLight.withValues(alpha: 0.6)
+      ..color = accentLight.withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
+      ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(silhouette, linePaint);
 
     // 内部微弱填充
     final fillPaint = Paint()
-      ..color = accentColor.withValues(alpha: 0.04)
+      ..color = accentColor.withValues(alpha: 0.03)
       ..style = PaintingStyle.fill;
     canvas.drawPath(silhouette, fillPaint);
   }
@@ -1619,87 +1754,79 @@ class _SilhouetteGuidePainter extends CustomPainter {
   bool shouldRepaint(_SilhouetteGuidePainter old) => false;
 }
 
-/// 构建半身人像轮廓 Path
+/// 微信默认头像风格人像轮廓（299点精确描边）
+/// 源 BoundingBox: (276, 401) ~ (880, 1005), 604×604
 Path _buildSilhouettePath(double w, double h) {
-  // 比例参数（相对宽高）
-  final headSize = w * 0.185;          // 头部直径
-  final headCY = h * 0.20;             // 头部中心 Y
-  final neckW = w * 0.09;              // 脖子宽度
-  final shoulderW = w * 0.42;          // 肩膀宽度（半宽）
-  final waistY = h * 0.82;             // 底部 Y
-  final waistW = w * 0.32;             // 底部半宽
-  final cx = w / 2;                    // 水平居中
+  // 299 个轮廓点 (x, y 交替)
+  const c = <double>[
+    563, 401, 560, 404, 544, 404, 541, 407, 534, 407, 531, 410,
+    525, 410, 521, 413, 518, 413, 512, 420, 508, 420, 505, 423,
+    502, 423, 489, 436, 486, 436, 463, 459, 463, 462, 457, 468,
+    457, 472, 450, 478, 450, 481, 447, 485, 447, 488, 444, 491,
+    444, 494, 440, 498, 440, 501, 437, 504, 437, 507, 434, 510,
+    434, 517, 431, 520, 431, 527, 428, 530, 428, 543, 424, 546,
+    424, 559, 421, 562, 421, 617, 424, 620, 424, 630, 428, 633,
+    428, 640, 431, 643, 431, 650, 434, 653, 434, 659, 437, 662,
+    437, 666, 440, 669, 440, 672, 444, 675, 444, 679, 447, 682,
+    447, 688, 450, 692, 450, 695, 457, 701, 457, 705, 463, 711,
+    463, 714, 466, 717, 466, 721, 470, 724, 470, 727, 473, 730,
+    473, 734, 482, 743, 482, 747, 486, 750, 486, 753, 489, 756,
+    489, 759, 492, 763, 492, 766, 495, 769, 495, 785, 492, 789,
+    492, 792, 489, 795, 489, 798, 482, 805, 479, 805, 476, 808,
+    473, 808, 470, 811, 466, 811, 463, 814, 457, 814, 453, 818,
+    450, 818, 447, 821, 440, 821, 434, 827, 428, 827, 424, 831,
+    418, 831, 411, 837, 408, 837, 405, 840, 398, 840, 395, 844,
+    392, 844, 389, 847, 385, 847, 382, 850, 376, 850, 373, 853,
+    369, 853, 366, 857, 363, 857, 360, 860, 356, 860, 353, 863,
+    347, 863, 343, 866, 340, 866, 337, 869, 334, 869, 330, 873,
+    324, 873, 321, 876, 318, 876, 311, 882, 305, 882, 305, 886,
+    292, 899, 288, 899, 288, 902, 285, 905, 285, 908, 282, 911,
+    282, 915, 279, 918, 279, 921, 276, 924, 276, 960, 279, 963,
+    279, 973, 282, 976, 282, 979, 288, 986, 288, 989, 292, 992,
+    295, 992, 298, 996, 301, 996, 308, 1002, 314, 1002, 318, 1005,
+    832, 1005, 835, 1002, 845, 1002, 848, 999, 851, 999, 854, 996,
+    858, 996, 874, 979, 874, 976, 877, 973, 877, 970, 880, 966,
+    880, 924, 877, 921, 877, 918, 874, 915, 874, 911, 871, 908,
+    871, 905, 864, 899, 864, 895, 854, 886, 851, 886, 845, 879,
+    841, 879, 838, 876, 832, 876, 829, 873, 825, 873, 822, 869,
+    819, 869, 816, 866, 809, 866, 806, 863, 803, 863, 799, 860,
+    793, 860, 790, 857, 786, 857, 783, 853, 774, 853, 770, 850,
+    767, 850, 764, 847, 761, 847, 757, 844, 754, 844, 751, 840,
+    744, 840, 741, 837, 735, 837, 732, 834, 728, 834, 725, 831,
+    722, 831, 719, 827, 709, 827, 706, 824, 702, 824, 699, 821,
+    696, 821, 693, 818, 686, 818, 683, 814, 680, 814, 673, 808,
+    670, 808, 667, 805, 664, 805, 657, 798, 657, 795, 654, 792,
+    654, 776, 657, 772, 657, 769, 660, 766, 660, 756, 664, 753,
+    664, 750, 670, 743, 670, 740, 677, 734, 677, 730, 683, 724,
+    683, 721, 686, 717, 686, 714, 696, 705, 696, 701, 699, 698,
+    699, 695, 702, 692, 702, 688, 709, 682, 709, 679, 712, 675,
+    712, 672, 715, 669, 715, 662, 719, 659, 719, 653, 722, 650,
+    722, 646, 725, 643, 725, 640, 728, 637, 728, 624, 732, 620,
+    732, 611, 735, 607, 735, 575, 732, 572, 732, 556, 728, 553,
+    728, 536, 725, 533, 725, 523, 722, 520, 722, 514, 719, 510,
+    719, 507, 715, 504, 715, 501, 712, 498, 712, 494, 709, 491,
+    709, 488, 706, 485, 706, 481, 702, 478, 702, 475, 696, 468,
+    696, 465, 693, 465, 689, 462, 689, 459, 651, 420, 647, 420,
+    644, 417, 638, 417, 634, 413, 631, 413, 628, 410, 625, 410,
+    622, 407, 615, 407, 612, 404, 602, 404, 599, 401,
+  ];
+
+  // BoundingBox: left=276, top=401, size=604x604
+  // 整体缩小到 65%，头部自然变小，肩部相对更明显
+  const srcL = 276.0, srcT = 401.0, srcSize = 604.0;
+  const fitScale = 0.65;
+  final s = (w < h ? w : h) / srcSize * fitScale;
+  final ox = (w - srcSize * s) / 2;
+  final oy = (h - srcSize * s) / 2;
 
   final path = Path();
-
-  // 从头顶开始，顺时针绘制半身轮廓
-  // 1. 头顶 → 右侧头部
-  path.addOval(Rect.fromCenter(
-    center: Offset(cx, headCY),
-    width: headSize,
-    height: headSize * 1.15,
-  ));
-
-  // 重新构建：从右耳下方开始向下画身体，
-  // 然后绕回来从左侧身体向上回到左耳下方，
-  // 最后与头部椭圆闭合
-
-  // 使用复合路径：身体路径 + 头部椭圆
-  // 身体路径
-  final body = Path();
-  final rightEarX = cx + headSize * 0.45;
-  final leftEarX = cx - headSize * 0.45;
-  final earY = headCY + headSize * 0.3;
-
-  body.moveTo(rightEarX, earY);
-  // 右肩曲线
-  body.quadraticBezierTo(
-    rightEarX + neckW * 0.5, earY + headSize * 0.15,
-    cx + neckW, earY + headSize * 0.35,
-  );
-  // 右肩到右上臂
-  body.quadraticBezierTo(
-    cx + shoulderW * 0.7, earY + headSize * 0.4,
-    cx + shoulderW, earY + headSize * 0.55,
-  );
-  // 右臂外侧到腰部
-  body.quadraticBezierTo(
-    cx + shoulderW * 1.05, earY + headSize * 0.7,
-    cx + waistW, waistY,
-  );
-  // 底部弧线
-  body.quadraticBezierTo(
-    cx, waistY + h * 0.04,
-    cx - waistW, waistY,
-  );
-  // 左臂外侧到肩
-  body.quadraticBezierTo(
-    cx - shoulderW * 1.05, earY + headSize * 0.7,
-    cx - shoulderW, earY + headSize * 0.55,
-  );
-  // 左肩到脖子
-  body.quadraticBezierTo(
-    cx - shoulderW * 0.7, earY + headSize * 0.4,
-    cx - neckW, earY + headSize * 0.35,
-  );
-  body.quadraticBezierTo(
-    leftEarX - neckW * 0.5, earY + headSize * 0.15,
-    leftEarX, earY,
-  );
-  body.close();
-
-  // 合并头部和身体
-  final combined = Path.combine(
-    PathOperation.union,
-    body,
-    Path()..addOval(Rect.fromCenter(
-      center: Offset(cx, headCY),
-      width: headSize,
-      height: headSize * 1.15,
-    )),
-  );
-
-  return combined;
+  for (int i = 0; i < c.length; i += 2) {
+    final x = ox + (c[i] - srcL) * s;
+    final y = oy + (c[i + 1] - srcT) * s;
+    if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+  }
+  path.close();
+  return path;
 }
 
 // ======================== Camera Placeholder ========================

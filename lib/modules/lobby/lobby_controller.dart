@@ -8,6 +8,7 @@ class LobbyController extends GetxController {
   final roomCodeController = TextEditingController();
   final RxBool isCreating = false.obs;
   final RxBool isJoining = false.obs;
+  final RxString selectedJoinRole = 'signer'.obs;
   final RxString errorMessage = ''.obs;
 
   late final RealtimeWsService _ws;

@@ -20,6 +20,12 @@ enum CameraState {
   error,
 }
 
+/// PR-4: 人像检测状态机。
+/// noPerson  -> [连续命中 N 次] -> detected
+/// detected -> [连续 miss M 次] -> coolingDown (仍显示 personInFrame=true)
+/// coolingDown -> [2s 后仍未恢复] -> noPerson
+enum PersonDetectState { noPerson, detected, coolingDown }
+
 class CameraService extends GetxService {
   CameraService({
     required PermissionService permissionService,
@@ -35,11 +41,26 @@ class CameraService extends GetxService {
 
   final Rx<CameraState> state = CameraState.idle.obs;
   final RxnString errorText = RxnString();
+  // personInFrame 表示“人像可见”的最终状态（经过 debounce/cooldown 后）
+  final RxBool personInFrame = false.obs;
 
   CameraController? controller;
   Timer? _webCaptureTimer;
   bool _processing = false;
   DateTime _lastSentAt = DateTime.fromMillisecondsSinceEpoch(0);
+  int _analysisFrameSkip = 0;
+
+  // === PR-4: 人像检测状态机 ===
+  static const int _kHitThreshold = 3;   // 连续命中次数 -> detected
+  static const int _kMissThreshold = 3;  // 连续未命中 -> coolingDown
+  static const Duration _kCooldownDuration = Duration(seconds: 2);
+  static const Duration _kMinVisibleDuration = Duration(milliseconds: 800);
+  PersonDetectState _personState = PersonDetectState.noPerson;
+  int _personHitCount = 0;
+  int _personMissCount = 0;
+  DateTime _personEnteredAt = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _personLostAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _cooldownTimer;
 
   Future<void> initialize() async {
     if (state.value == CameraState.initializing ||
@@ -118,6 +139,9 @@ class CameraService extends GetxService {
     }
 
     await controller!.startImageStream((image) async {
+      // 人像检测独立于 WebSocket 发送逻辑，每帧都检测
+      _analyzeForPerson(image);
+
       if (_processing || !_shouldSendFrame()) return;
       _processing = true;
       _lastSentAt = DateTime.now();
@@ -154,6 +178,147 @@ class CameraService extends GetxService {
     }
   }
 
+  void _analyzeForPerson(CameraImage image) {
+    _analysisFrameSkip++;
+    if (_analysisFrameSkip % 5 != 0) return; // every 5th frame
+
+    final w = image.width;
+    final h = image.height;
+    final cx = w ~/ 2, cy = h ~/ 2;
+    // 中心 40%×50% 区域（覆盖头部双肩和上半身）
+    final rw = (w * 0.40).round().clamp(8, 640);
+    final rh = (h * 0.50).round().clamp(8, 800);
+    final x1 = (cx - rw ~/ 2).clamp(0, w - rw - 1);
+    final y1 = (cy - rh ~/ 2).clamp(0, h - rh - 1);
+
+    bool rawHit = false;
+    try {
+      final (centerMean, centerVar) = _sampleVariance(image, x1, y1, rw, rh);
+      // 采样左右边缘亮度，与中心对比（人在时中心亮度明显异于背景）
+      final edgeW = (w * 0.10).round().clamp(8, 80);
+      final (leftMean, _) = _sampleVariance(image, 0, y1, edgeW, rh);
+      final (rightMean, _) = _sampleVariance(image, w - edgeW - 1, y1, edgeW, rh);
+      final edgeMean = (leftMean + rightMean) / 2.0;
+      final centerDiff = (centerMean - edgeMean).abs();
+      // 中心有纹理 + 亮度与边缘差异显著 → 人在画面中
+      rawHit = centerVar > 150.0 && centerDiff > 25.0;
+    } catch (e) {
+      _log('person analysis error: $e');
+      return;
+    }
+    _updatePersonState(rawHit);
+  }
+
+  /// PR-4: 状态机核心。只在状态跳转时才更新 personInFrame，避免 UI 闪烁。
+  void _updatePersonState(bool rawHit) {
+    final now = DateTime.now();
+
+    if (rawHit) {
+      _personHitCount++;
+      _personMissCount = 0;
+    } else {
+      _personMissCount++;
+      _personHitCount = 0;
+    }
+
+    final prev = _personState;
+    switch (_personState) {
+      case PersonDetectState.noPerson:
+        if (_personHitCount >= _kHitThreshold) {
+          _personState = PersonDetectState.detected;
+          _personEnteredAt = now;
+          _cooldownTimer?.cancel();
+          _cooldownTimer = null;
+          personInFrame.value = true;
+        }
+        break;
+      case PersonDetectState.detected:
+        // 最小可见时长未到 -> 不允许退出
+        if (now.difference(_personEnteredAt) < _kMinVisibleDuration) {
+          break;
+        }
+        if (_personMissCount >= _kMissThreshold) {
+          _personState = PersonDetectState.coolingDown;
+          _personLostAt = now;
+          // personInFrame 暂不变，等 cooldown 超时后才隐藏
+          _cooldownTimer?.cancel();
+          _cooldownTimer = Timer(_kCooldownDuration, () {
+            // cooldown 期间没有恬复 -> noPerson
+            if (_personState == PersonDetectState.coolingDown) {
+              _personState = PersonDetectState.noPerson;
+              _personHitCount = 0;
+              _personMissCount = 0;
+              personInFrame.value = false;
+              _log('[UI_STATE] COOLING_DOWN -> NO_PERSON');
+            }
+          });
+        }
+        break;
+      case PersonDetectState.coolingDown:
+        if (_personHitCount >= _kHitThreshold) {
+          _personState = PersonDetectState.detected;
+          _personEnteredAt = now;
+          _cooldownTimer?.cancel();
+          _cooldownTimer = null;
+        }
+        break;
+    }
+
+    if (prev != _personState) {
+      _log('[UI_STATE] ${prev.name} -> ${_personState.name}  '
+          'hit=$_personHitCount miss=$_personMissCount inFrame=${personInFrame.value}');
+    }
+  }
+
+  /// 对指定区域采样亮度值，返回 (mean, variance)
+  (double, double) _sampleVariance(CameraImage image, int x1, int y1, int rw, int rh, {int step = 3}) {
+    final x2 = (x1 + rw).clamp(0, image.width - 1);
+    final y2 = (y1 + rh).clamp(0, image.height - 1);
+
+    double sum = 0, sumSq = 0;
+    int count = 0;
+
+    if (image.format.group == ImageFormatGroup.yuv420) {
+      final yPlane = image.planes[0];
+      final yBytes = yPlane.bytes;
+      final rowStride = yPlane.bytesPerRow;
+
+      for (int y = y1; y < y2; y += step) {
+        final rowOffset = y * rowStride;
+        for (int x = x1; x < x2; x += step) {
+          final idx = rowOffset + x;
+          if (idx >= yBytes.length) break;
+          final val = yBytes[idx];
+          sum += val;
+          sumSq += val * val;
+          count++;
+        }
+      }
+    } else {
+      // BGRA8888 — use blue channel as luminance approximation
+      final plane = image.planes[0];
+      final bytes = plane.bytes;
+      final rowStride = plane.bytesPerRow;
+
+      for (int y = y1; y < y2; y += step) {
+        final rowOffset = y * rowStride;
+        for (int x = x1; x < x2; x += step) {
+          final offset = rowOffset + x * 4 + 2; // blue channel
+          if (offset >= bytes.length) break;
+          final val = bytes[offset];
+          sum += val;
+          sumSq += val * val;
+          count++;
+        }
+      }
+    }
+
+    if (count == 0) return (0.0, 0.0);
+    final mean = sum / count;
+    final variance = (sumSq / count) - (mean * mean);
+    return (mean, variance);
+  }
+
   Future<void> restart() async {
     _log('restart camera');
     await stopCapture();
@@ -167,6 +332,8 @@ class CameraService extends GetxService {
   Future<void> stopCapture() async {
     _webCaptureTimer?.cancel();
     _webCaptureTimer = null;
+    _cooldownTimer?.cancel();
+    _cooldownTimer = null;
     if (!kIsWeb && controller?.value.isStreamingImages == true) {
       await controller?.stopImageStream();
     }
@@ -254,26 +421,81 @@ enum CameraImageFormat { bgra8888, yuv420 }
 
 Uint8List? _encodeCameraImage(CameraImagePayload payload) {
   try {
-    final img.Image image = payload.format == CameraImageFormat.bgra8888
-        ? img.Image.fromBytes(
-            width: payload.width,
-            height: payload.height,
-            bytes: payload.planes[0].bytes.buffer,
-            order: img.ChannelOrder.bgra,
-          )
-        : _convertYuv420(payload);
-
-    final shortSide = image.width < image.height ? image.width : image.height;
-    final scale = 320.0 / shortSide;
-    final resized = img.copyResize(
-      image,
-      width: (image.width * scale).round(),
-      height: (image.height * scale).round(),
-    );
-    return img.encodeJpg(resized, quality: 75);
+    img.Image image;
+    if (payload.format == CameraImageFormat.bgra8888) {
+      image = img.Image.fromBytes(
+        width: payload.width,
+        height: payload.height,
+        bytes: payload.planes[0].bytes.buffer,
+        order: img.ChannelOrder.bgra,
+      );
+      // BGRA 走原有 resize 路径
+      final shortSide = image.width < image.height ? image.width : image.height;
+      final scale = 320.0 / shortSide;
+      image = img.copyResize(
+        image,
+        width: (image.width * scale).round(),
+        height: (image.height * scale).round(),
+      );
+    } else {
+      // PR-4: YUV 走加速路径，直接在转换时下采样
+      image = _convertYuv420Downsampled(payload, targetShort: 320);
+    }
+    return img.encodeJpg(image, quality: 75);
   } catch (_) {
     return null;
   }
+}
+
+/// PR-4: YUV420 -> RGB 与下采样一步完成，跳过 90 万次 setPixelRgb 的冷热路径。
+img.Image _convertYuv420Downsampled(CameraImagePayload payload,
+    {int targetShort = 320}) {
+  final width = payload.width;
+  final height = payload.height;
+  final short = width < height ? width : height;
+  // stride 越大越快，但不能太大以充分保留手部细节
+  var stride = (short / targetShort).floor();
+  if (stride < 1) stride = 1;
+  if (stride > 8) stride = 8;
+
+  final outW = width ~/ stride;
+  final outH = height ~/ stride;
+
+  final yBytes = payload.planes[0].bytes;
+  final uBytes = payload.planes[1].bytes;
+  final vBytes = payload.planes[2].bytes;
+  final yRowStride = payload.planes[0].bytesPerRow;
+  final uvRowStride = payload.planes[1].bytesPerRow;
+  final uvPixelStride = payload.planes[1].bytesPerPixel;
+
+  final out = img.Image(width: outW, height: outH);
+  final yLen = yBytes.length;
+  final uLen = uBytes.length;
+  final vLen = vBytes.length;
+
+  for (var oy = 0; oy < outH; oy++) {
+    final row = oy * stride;
+    final rowBase = row * yRowStride;
+    final uvRow = row >> 1;
+    final uvRowBase = uvRow * uvRowStride;
+    for (var ox = 0; ox < outW; ox++) {
+      final col = ox * stride;
+      final yIdx = rowBase + col;
+      if (yIdx >= yLen) continue;
+      final y = yBytes[yIdx];
+      final uvIdx = uvRowBase + (col >> 1) * uvPixelStride;
+      var u = 128, v = 128;
+      if (uvIdx < uLen) u = uBytes[uvIdx];
+      if (uvIdx < vLen) v = vBytes[uvIdx];
+      final uShift = u - 128;
+      final vShift = v - 128;
+      final r = (y + 1.370705 * vShift).round().clamp(0, 255);
+      final g = (y - 0.337633 * uShift - 0.698001 * vShift).round().clamp(0, 255);
+      final b = (y + 1.732446 * uShift).round().clamp(0, 255);
+      out.setPixelRgb(ox, oy, r, g, b);
+    }
+  }
+  return out;
 }
 
 img.Image _convertYuv420(CameraImagePayload payload) {

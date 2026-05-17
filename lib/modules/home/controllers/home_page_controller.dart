@@ -53,6 +53,7 @@ class HomePageController extends GetxController {
   final RxBool isSigner = false.obs;
   final RxBool showQuickSettings = false.obs;
   final RxString sessionDuration = '00:00'.obs;
+  final RxBool showDebugOverlay = false.obs;
 
   Timer? _sessionTimer;
   DateTime? _sessionStartTime;
@@ -79,11 +80,23 @@ class HomePageController extends GetxController {
     } else {
       // 从 Lobby 进入，已连上 WebSocket
       isBootstrapping.value = false;
-      if (isSigner.value) {
-        // 手语者：启动摄像头
-        unawaited(_initCamera());
-      }
+      // 启动摄像头（手语者和对话者都需要）
+      unawaited(_initCamera());
     }
+
+    // 作弊者模式：手语者端启动 15s 自动循环
+    if (settingsService.cheaterMode.value && isSigner.value) {
+      sessionService.startCheaterAutoPlay();
+    }
+
+    // 监听作弊者模式开关
+    ever(settingsService.cheaterMode, (bool on) {
+      if (on && isSigner.value) {
+        sessionService.startCheaterAutoPlay();
+      } else if (!on) {
+        sessionService.stopCheaterAutoPlay();
+      }
+    });
 
     // 监听视频识别开关（跳过初始值，仅响应切换操作）
     bool firstCall = true;

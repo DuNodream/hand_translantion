@@ -20,7 +20,7 @@ class SignBridgeApp extends StatelessWidget {
         title: 'SignBridge',
         debugShowCheckedModeBanner: false,
         theme: CupertinoThemeData(
-          brightness: Brightness.dark,
+          brightness: c.brightness,
           primaryColor: c.accent,
           scaffoldBackgroundColor: c.background,
           barBackgroundColor: c.surface,

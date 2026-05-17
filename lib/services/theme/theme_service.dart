@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../shared/themes/app_theme.dart';
 
@@ -11,10 +12,28 @@ class ThemeService extends GetxService {
   List<String> get presetNames => _presets.map((p) => p.name).toList();
   int get presetCount => _presets.length;
 
+  @override
+  void onInit() {
+    super.onInit();
+    _loadSavedTheme();
+  }
+
+  Future<void> _loadSavedTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedIndex = prefs.getInt('themeIndex') ?? 0;
+    if (savedIndex != _currentIndex && savedIndex >= 0 && savedIndex < _presets.length) {
+      _currentIndex = savedIndex;
+      AppTheme.current = _presets[savedIndex];
+    }
+  }
+
   void apply(int index) {
     if (index < 0 || index >= _presets.length) return;
     _currentIndex = index;
     AppTheme.current = _presets[index];
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt('themeIndex', index);
+    });
   }
 
   static final List<ThemePreset> _presets = [
@@ -36,6 +55,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF9CA3AF),
       chatBubbleMe: Color(0xFF4F46E5),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '极光绿',
@@ -55,6 +76,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF9CA3AF),
       chatBubbleMe: Color(0xFF059669),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '暗夜紫',
@@ -74,6 +97,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF9CA3AF),
       chatBubbleMe: Color(0xFF7C3AED),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '海洋蓝',
@@ -93,6 +118,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF9CA3AF),
       chatBubbleMe: Color(0xFF2563EB),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '落日橙',
@@ -112,6 +139,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFFD4A574),
       chatBubbleMe: Color(0xFFD97706),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '樱花粉',
@@ -131,6 +160,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFFD495B8),
       chatBubbleMe: Color(0xFFDB2777),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '石墨灰',
@@ -150,6 +181,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFFA1A1AA),
       chatBubbleMe: Color(0xFF6366F1),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '翡翠绿',
@@ -169,6 +202,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF94A3B8),
       chatBubbleMe: Color(0xFF0D9488),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '赛博黄',
@@ -188,6 +223,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFFA3A3A3),
       chatBubbleMe: Color(0xFFEAB308),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '烈焰红',
@@ -207,6 +244,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFFA3A3A3),
       chatBubbleMe: Color(0xFFDC2626),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '冰川蓝',
@@ -226,6 +265,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF9CA3AF),
       chatBubbleMe: Color(0xFF06B6D4),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '香槟金',
@@ -245,6 +286,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFFA3A3A3),
       chatBubbleMe: Color(0xFFD4A048),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '罗兰紫',
@@ -264,6 +307,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF9CA3AF),
       chatBubbleMe: Color(0xFFA855F7),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
     const ThemePreset(
       name: '青竹绿',
@@ -283,6 +328,30 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF9CA3AF),
       chatBubbleMe: Color(0xFF65A30D),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
+    ),
+    const ThemePreset(
+      // 与渌景数字科技 logo 的「深青蓝 + 翠绿」呼应
+      name: '珍珠白',
+      background: Color(0xFFF4F7F6),       // 极淡青白色，比纯灰白更柔
+      surface: Color(0xFFFFFFFF),
+      surfaceLight: Color(0xFFF8FBFA),
+      glassBg: Color(0x0D14424F),          // 玻璃底色带 logo 深青底
+      glassBorder: Color(0x1F14424F),
+      divider: Color(0xFFD8E4E5),          // 淡青灰分割线
+      accent: Color(0xFF1F6478),           // logo 深青蓝（主色）
+      accentLight: Color(0xFF2FA08C),      // logo 翠绿（强调副色）
+      success: Color(0xFF22C55E),
+      warning: Color(0xFFE4A11B),
+      danger: Color(0xFFD83A52),
+      textPrimary: Color(0xFF14424F),      // 深青墨色，与 logo「渌景数字科技」字色一致
+      textSecondary: Color(0xFF4E6F77),    // 中性青灰，比原暖灰对比度更高
+      textMuted: Color(0xFF8AA1A6),        // 浅青灰，比 #B5B0AA 易读
+      chatBubbleMe: Color(0xFF1F6478),     // 自己的气泡 = 主色
+      chatBubbleOther: Color(0xFFEFF4F4),  // 对方气泡 = 极淡青白
+      chatBubbleSign: Color(0xFFDFEEEA),   // 手语识别气泡：浅翠绿
+      chatBubbleSpeech: Color(0xFFDDE9EE), // 语音输入气泡：浅青蓝
     ),
     const ThemePreset(
       name: '钨钢灰',
@@ -302,6 +371,8 @@ class ThemeService extends GetxService {
       textMuted: Color(0xFF8B8FA3),
       chatBubbleMe: Color(0xFF8B8FA3),
       chatBubbleOther: Color(0x1AFFFFFF),
+      chatBubbleSign: Color(0xFF1E3A5F),
+      chatBubbleSpeech: Color(0xFF2D1B69),
     ),
   ];
 }

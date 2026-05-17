@@ -19,6 +19,12 @@ class ThemePreset {
   final Color textMuted;
   final Color chatBubbleMe;
   final Color chatBubbleOther;
+  final Color chatBubbleSign;
+  final Color chatBubbleSpeech;
+
+  /// 根据文字颜色自动推断：白字→暗色主题，黑字→亮色主题
+  Brightness get brightness =>
+      textPrimary.computeLuminance() > 0.5 ? Brightness.dark : Brightness.light;
 
   const ThemePreset({
     required this.name,
@@ -38,6 +44,8 @@ class ThemePreset {
     required this.textMuted,
     required this.chatBubbleMe,
     required this.chatBubbleOther,
+    required this.chatBubbleSign,
+    required this.chatBubbleSpeech,
   });
 }
 
@@ -112,5 +120,7 @@ class AppTheme {
     textMuted: Color(0xFF9CA3AF),
     chatBubbleMe: Color(0xFF4F46E5),
     chatBubbleOther: Color(0x1AFFFFFF),
+    chatBubbleSign: Color(0xFF1E3A5F),
+    chatBubbleSpeech: Color(0xFF2D1B69),
   );
 }

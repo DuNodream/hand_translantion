@@ -12,6 +12,23 @@ class SettingsController extends GetxController {
 
   final serverUrlController = TextEditingController();
 
+  // ========== 版本点击彩蛋（5次显示作弊模式） ==========
+  final RxInt versionTapCount = 0.obs;
+
+  void onVersionTap() {
+    versionTapCount.value++;
+    if (versionTapCount.value >= 5) {
+      Get.snackbar(
+        '🔧 开发者彩蛋',
+        '作弊者模式已解锁',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xCC1A1A2E),
+        colorText: const Color(0xFFFFFFFF),
+        duration: const Duration(seconds: 2),
+      );
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -46,11 +63,21 @@ class SettingsController extends GetxController {
     _settings.toggleVideoRecognition();
   }
 
+  void togglePersonGuide() {
+    _settings.personGuideEnabled.value = !_settings.personGuideEnabled.value;
+  }
+
   void setSpeechEngine(String engine) {
     _settings.setSpeechEngine(engine);
     if (engine == 'none' && _speech.state.value == SpeechState.listening) {
       _speech.toggleListening();
     }
+  }
+
+  // ==================== 作弊者模式 ====================
+
+  void toggleCheaterMode() {
+    _settings.cheaterMode.value = !_settings.cheaterMode.value;
   }
 
   // ==================== 开发者模式 ====================

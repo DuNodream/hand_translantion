@@ -259,6 +259,46 @@ class RealtimeWsService extends GetxService with WidgetsBindingObserver {
       return;
     }
 
+    if (type == 'model_switch_ack') {
+      final modelName = payload['model']?.toString() ?? '';
+      final status = payload['status']?.toString() ?? 'ok';
+      final hash = payload['model_hash']?.toString() ?? '';
+      final msg = payload['message']?.toString() ?? '';
+      _log('model_switch_ack status=$status model=$modelName hash=$hash');
+      if (status == 'pending') {
+        Get.snackbar(
+          '模型切换中…',
+          modelName,
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+      } else if (status == 'ok') {
+        Get.snackbar(
+          '模型切换完成',
+          '已加载：$modelName${hash.isNotEmpty ? "  (hash $hash)" : ""}',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 3),
+        );
+      } else {
+        // status == 'error'
+        Get.snackbar(
+          '模型切换失败',
+          msg.isNotEmpty ? msg : modelName,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: const Color(0xCC9A1A2E),
+          colorText: const Color(0xFFFFFFFF),
+          duration: const Duration(seconds: 5),
+        );
+      }
+      return;
+    }
+
+    if (type == 'model_switched') {
+      final modelName = payload['model']?.toString() ?? '';
+      _log('backend model changed: $modelName');
+      return;
+    }
+
     if (type == 'error') {
       errorText.value = payload['message']?.toString() ?? 'Server error';
       _log('server error: ${errorText.value}');

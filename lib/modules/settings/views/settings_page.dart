@@ -60,6 +60,29 @@ class SettingsPage extends GetView<SettingsController> {
                 value: settings.videoRecognitionEnabled.value,
                 onChanged: (_) => controller.toggleVideoRecognition(),
               ),
+              const SizedBox(height: 16),
+              _SwitchTile(
+                icon: CupertinoIcons.person_2,
+                label: '人像引导框',
+                subtitle: '开启后人在框消失人不在框出现',
+                value: settings.personGuideEnabled.value,
+                onChanged: (_) => controller.togglePersonGuide(),
+              ),
+              // 作弊者模式（版本点击 5 次解锁）
+              if (controller.versionTapCount.value >= 5) ...[
+                const SizedBox(height: 16),
+                _SwitchTile(
+                  icon: CupertinoIcons.eyedropper_halffull,
+                  label: '作弊者模式',
+                  subtitle: '开启后无论比什么手语都按固定剧本对话',
+                  value: settings.cheaterMode.value,
+                  onChanged: (_) => controller.toggleCheaterMode(),
+                ),
+                if (settings.cheaterMode.value) ...[
+                  const SizedBox(height: 12),
+                  _CheaterScriptEditor(),
+                ],
+              ],
               const SizedBox(height: 24),
               _SectionHeader(title: '显示'),
               _SwitchTile(
@@ -125,10 +148,13 @@ class SettingsPage extends GetView<SettingsController> {
               ],
               const SizedBox(height: 24),
               _SectionHeader(title: '关于'),
-              _InfoTile(
-                icon: CupertinoIcons.info,
-                label: '版本',
-                value: '1.0.0',
+              GestureDetector(
+                onTap: controller.onVersionTap,
+                child: _InfoTile(
+                  icon: CupertinoIcons.info,
+                  label: '版本',
+                  value: '1.0.0',
+                ),
               ),
               const SizedBox(height: 40),
             ],
@@ -362,6 +388,96 @@ class _SettingsTile extends StatelessWidget {
             Icon(CupertinoIcons.chevron_right, size: 14, color: c.textMuted),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ======================== Cheat Script Editor ========================
+
+class _CheaterScriptEditor extends GetView<SettingsController> {
+  @override
+  Widget build(BuildContext context) {
+    final settings = controller.settings;
+    final c = AppTheme.current;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('自定义剧本', style: TextStyle(color: c.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          ...List.generate(settings.cheaterScript.length, (i) {
+            final textCtl = TextEditingController(text: settings.cheaterScript[i]);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    child: Text('${i + 1}', style: TextStyle(color: c.textMuted, fontSize: 12)),
+                  ),
+                  Expanded(
+                    child: Container(
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: c.glassBg,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: c.glassBorder),
+                      ),
+                      child: CupertinoTextField(
+                        controller: textCtl,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        style: TextStyle(color: c.textPrimary, fontSize: 13),
+                        decoration: const BoxDecoration(),
+                        onChanged: (val) => settings.updateCheaterScript(i, val),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () {
+                      if (settings.cheaterScript.length > 1) {
+                        settings.removeCheaterScriptItem(i);
+                      }
+                    },
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: c.danger.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(CupertinoIcons.minus, size: 12, color: c.danger),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => settings.addCheaterScriptItem(''),
+            child: Container(
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.glassBg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: c.glassBorder, style: BorderStyle.solid),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(CupertinoIcons.plus, size: 14, color: c.accentLight),
+                  const SizedBox(width: 6),
+                  Text('添加句子', style: TextStyle(color: c.accentLight, fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
